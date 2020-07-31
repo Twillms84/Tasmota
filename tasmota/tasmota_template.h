@@ -799,7 +799,7 @@ enum SupportedModules {
   SONOFF_S31, ZENGGE_ZF_WF017, SONOFF_POW_R2, SONOFF_IFAN02, BLITZWOLF_BWSHP, SHELLY1, SHELLY2, PHILIPS, NEO_COOLCAM, ESP_SWITCH,
   OBI, TECKIN, APLIC_WDP303075, TUYA_DIMMER, GOSUND, ARMTRONIX_DIMMERS, SK03_TUYA, PS_16_DZ, TECKIN_US, MANZOKU_EU_4,
   OBI2, YTF_IR_BRIDGE, DIGOO, KA10, ZX2820, MI_DESK_LAMP, SP10, WAGA, SYF05, SONOFF_L1,
-  SONOFF_IFAN03, EXS_DIMMER, PWM_DIMMER, SONOFF_D1, SONOFF_ZB_BRIDGE,
+  SONOFF_IFAN03, EXS_DIMMER, PWM_DIMMER, SONOFF_D1, SONOFF_ZB_BRIDGE, HUEHNERKLAPPE_ST, HUEHNERKLAPPE_1REL,
   MAXMODULE};
 
 #define USER_MODULE        255
@@ -812,30 +812,31 @@ const char kModuleNames[] PROGMEM =
   "Sonoff S31|Zengge WF017|Sonoff Pow R2|Sonoff iFan02|BlitzWolf SHP|Shelly 1|Shelly 2|Xiaomi Philips|Neo Coolcam|ESP Switch|"
   "OBI Socket|Teckin|AplicWDP303075|Tuya MCU|Gosund SP1 v23|ARMTR Dimmer|SK03 Outdoor|PS-16-DZ|Teckin US|Manzoku strip|"
   "OBI Socket 2|YTF IR Bridge|Digoo DG-SP202|KA10|Luminea ZX2820|Mi Desk Lamp|SP10|WAGA CHCZ02MB|SYF05|Sonoff L1|"
-  "Sonoff iFan03|EXS Dimmer|PWM Dimmer|Sonoff D1|Sonoff ZbBridge"
+  "Sonoff iFan03|EXS Dimmer|PWM Dimmer|Sonoff D1|Sonoff ZbBridge|"
+  "HuehnerklappeSt | Huehnerklappe 1Rel"
   ;
 
 const uint8_t kModuleNiceList[] PROGMEM = {
-  SONOFF_BASIC,        // Sonoff Relay Devices
-  SONOFF_RF,
-  SONOFF_TH,
-  SONOFF_DUAL,
-  SONOFF_DUAL_R2,
-  SONOFF_POW,
-  SONOFF_POW_R2,
-  SONOFF_4CH,
-  SONOFF_4CHPRO,
-  SONOFF_S31,          // Sonoff Socket Relay Devices with Energy Monitoring
-  SONOFF_S2X,          // Sonoff Socket Relay Devices
-  SONOFF_TOUCH,        // Sonoff Switch Devices
-  SONOFF_T11,
-  SONOFF_T12,
-  SONOFF_T13,
+ //SONOFF_BASIC,        // Sonoff Relay Devices
+ //SONOFF_RF,
+ //SONOFF_TH,
+ //SONOFF_DUAL,
+ //SONOFF_DUAL_R2,
+ //SONOFF_POW,
+ //SONOFF_POW_R2,
+ //SONOFF_4CH,
+ //SONOFF_4CHPRO,
+ //SONOFF_S31,          // Sonoff Socket Relay Devices with Energy Monitoring
+ //SONOFF_S2X,          // Sonoff Socket Relay Devices
+ //SONOFF_TOUCH,        // Sonoff Switch Devices
+ //SONOFF_T11,
+ //SONOFF_T12,
+ //SONOFF_T13,
 #ifdef USE_SONOFF_D1
   SONOFF_D1,           // Sonoff D1
 #endif
-  SONOFF_LED,          // Sonoff Light Devices
-  SONOFF_BN,
+//  SONOFF_LED,          // Sonoff Light Devices
+//  SONOFF_BN,
 #ifdef USE_SONOFF_L1
   SONOFF_L1,
 #endif
@@ -854,35 +855,35 @@ const uint8_t kModuleNiceList[] PROGMEM = {
 #ifdef USE_ZIGBEE_EZSP
   SONOFF_ZB_BRIDGE,
 #endif
-  SONOFF_SV,           // Sonoff Development Devices
-  SONOFF_DEV,
-  CH1,                 // Relay Devices
-  CH4,
-  MOTOR,
-  ELECTRODRAGON,
-  EXS_RELAY,
-  SUPLA1,
-  LUANIHVIO,
-  YUNSHAN,
-  WION,
-  SHELLY1,
-  SHELLY2,
-  BLITZWOLF_BWSHP,     // Socket Relay Devices with Energy Monitoring
-  TECKIN,
-  TECKIN_US,
-  APLIC_WDP303075,
-  GOSUND,
-  ZX2820,
-  SK03_TUYA,
-  DIGOO,
-  KA10,
-  SP10,
-  WAGA,
-  NEO_COOLCAM,         // Socket Relay Devices
-  OBI,
-  OBI2,
-  MANZOKU_EU_4,
-  ESP_SWITCH,          // Switch Devices
+//  SONOFF_SV,           // Sonoff Development Devices
+//  SONOFF_DEV,
+//  CH1,                 // Relay Devices
+//  CH4,
+//  MOTOR,
+//  ELECTRODRAGON,
+//  EXS_RELAY,
+//  SUPLA1,
+//  LUANIHVIO,
+//  YUNSHAN,
+//  WION,
+//  SHELLY1,
+//  SHELLY2,
+//  BLITZWOLF_BWSHP,     // Socket Relay Devices with Energy Monitoring
+//  TECKIN,
+//  TECKIN_US,
+//  APLIC_WDP303075,
+//  GOSUND,
+//  ZX2820,
+//  SK03_TUYA,
+//  DIGOO,
+//  KA10,
+//  SP10,
+//  WAGA,
+//  NEO_COOLCAM,         // Socket Relay Devices
+//  OBI,
+//  OBI2,
+//  MANZOKU_EU_4,
+//  ESP_SWITCH,          // Switch Devices
 #ifdef USE_TUYA_MCU
   TUYA_DIMMER,         // Dimmer Devices
 #endif
@@ -898,23 +899,25 @@ const uint8_t kModuleNiceList[] PROGMEM = {
 #ifdef USE_PWM_DIMMER
   PWM_DIMMER,
 #endif
-  H801,                // Light Devices
-  MAGICHOME,
-  ARILUX_LC01,
-  ARILUX_LC06,
-  ARILUX_LC11,
-  ZENGGE_ZF_WF017,
-  HUAFAN_SS,
+//  H801,                // Light Devices
+//  MAGICHOME,
+//  ARILUX_LC01,
+//  ARILUX_LC06,
+//  ARILUX_LC11,
+//  ZENGGE_ZF_WF017,
+//  HUAFAN_SS,
 #ifdef ROTARY_V1
   MI_DESK_LAMP,
 #endif
-  KMC_70011,
-  AILIGHT,             // Light Bulbs
-  PHILIPS,
-  SYF05,
-  YTF_IR_BRIDGE,
-  WITTY,               // Development Devices
-  WEMOS
+//  KMC_70011,
+//  AILIGHT,             // Light Bulbs
+//  PHILIPS,
+//  SYF05,
+//  YTF_IR_BRIDGE,
+//  WITTY,               // Development Devices
+//  WEMOS,
+HUEHNERKLAPPE_ST,
+HUEHNERKLAPPE_1REL
 };
 
 // Default module settings
@@ -2301,6 +2304,52 @@ const mytmplt kModules[MAXMODULE] PROGMEM = {
     0,                // GPIO15 connected to IO15 pad, also used for logging
     GPIO_KEY1,        // GPIO16 Button
     0
+  },
+    {                 // HUEHNERKLAPPE St- Support for Huehnerklappe
+                      // Rauf und Runter
+                      // controlled by two GPIO pins. There are typically, up & d own
+
+   GPIO_I2C_SCL,      // GPIO00 D1
+    0,                // GPIO01 Serial RXD
+    GPIO_I2C_SDA,     //GPIO002 D2
+   0,                 // GPIO03 Serial TXD + Button
+    GPIO_REL1,        // GPIO04 Relay 1 D3
+    GPIO_REL2,        // GPIO05 Relay 2 D4
+                      // GPIO06 (SD_CLK   Flash)
+                      // GPIO07 (SD_DATA0 Flash QIO/DIO/DOUT)
+                      // GPIO08 (SD_DATA1 Flash QIO/DIO/DOUT)
+    0,                // GPIO09 (SD_DATA2 Flash QIO or ESP8285)
+    0,                // GPIO10 (SD_DATA3 Flash QIO or ESP8285)
+                      // GPIO11 (SD_CMD   Flash)
+   0,        // GPIO12 PushButton
+   0,        // GPIO13 Relay 3
+    GPIO_SWT1,        // GPIO14 Reed Contact D5
+ 
+    0                 // GPIO16
+  },
+     
+      
+      {                 // HUEHNERKLAPPE1Rel- Support for Huehnerklappe
+                      // Rauf und Runter
+                      // controlled by two GPIO pins. There are typically, up & d own
+
+    GPIO_I2C_SCL,      // GPIO00
+    0,                // GPIO01 Serial RXD
+    GPIO_I2C_SDA,
+   0,                 // GPIO03 Serial TXD + Button
+    GPIO_REL1,        // GPIO04 Relay 1
+    GPIO_REL2,        // GPIO05 Relay 2
+                      // GPIO06 (SD_CLK   Flash)
+                      // GPIO07 (SD_DATA0 Flash QIO/DIO/DOUT)
+                      // GPIO08 (SD_DATA1 Flash QIO/DIO/DOUT)
+    0,                // GPIO09 (SD_DATA2 Flash QIO or ESP8285)
+    0,                // GPIO10 (SD_DATA3 Flash QIO or ESP8285)
+                      // GPIO11 (SD_CMD   Flash)
+    0,                // GPIO12 
+    GPIO_REL3,        // GPIO13 Relay 3
+    GPIO_SWT1,        // GPIO14 Reed Contact
+ 
+    0                 // GPIO16
   }
 };
 
