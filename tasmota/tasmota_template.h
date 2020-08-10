@@ -840,8 +840,8 @@ const uint8_t kModuleNiceList[] PROGMEM = {
 #ifdef USE_SONOFF_L1
   SONOFF_L1,
 #endif
-  SONOFF_B1,           // Sonoff Light Bulbs
-  SLAMPHER,
+//SONOFF_B1,           // Sonoff Light Bulbs
+//SLAMPHER,
 #ifdef USE_SONOFF_SC
   SONOFF_SC,           // Sonoff Environmemtal Sensor
 #endif
@@ -915,7 +915,7 @@ const uint8_t kModuleNiceList[] PROGMEM = {
 //  SYF05,
 //  YTF_IR_BRIDGE,
 //  WITTY,               // Development Devices
-//  WEMOS,
+    WEMOS,
 HUEHNERKLAPPE_ST,
 HUEHNERKLAPPE_1REL
 };
