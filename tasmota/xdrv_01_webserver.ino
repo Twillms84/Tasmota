@@ -35,7 +35,7 @@ const uint16_t CHUNKED_BUFFER_SIZE = (MESSZ / 2) - 100;  // Chunk buffer size (s
 
 const uint16_t HTTP_REFRESH_TIME = 2345;                 // milliseconds
 const uint16_t HTTP_RESTART_RECONNECT_TIME = 9000;       // milliseconds - Allow time for restart and wifi reconnect
-const uint16_t HTTP_OTA_RESTART_RECONNECT_TIME = 28000;  // milliseconds - Allow time for uploading binary, unzip/write to final destination and wifi reconnect
+const uint16_t HTTP_OTA_RESTART_RECONNECT_TIME = 20000;  // milliseconds - Allow time for uploading binary, unzip/write to final destination and wifi reconnect
 
 #include <ESP8266WebServer.h>
 #include <DNSServer.h>
@@ -1272,7 +1272,7 @@ void WebSliderColdWarm(void)
 {
   WSContentSend_P(HTTP_MSG_SLIDER_GRADIENT,  // Cold Warm
     "a",             // a - Unique HTML id
-    "#fff", "#ff0",  // White to Yellow
+    "#eff", "#f81",  // 6500k in RGB (White) to 2500k in RGB (Warm Yellow)
     1,               // sl1
     153, 500,        // Range color temperature
     LightGetColorTemp(),
@@ -1930,7 +1930,7 @@ void HandleModuleConfiguration(void)
   }
   WSContentSend_P(PSTR("\";sk(%d," STR(ADC0_PIN) ");"), Settings.my_adc0);
 #endif  // USE_ADC_VCC
-#endif  // ESP8266 - ESP32
+#endif  // ESP8266
 
   WSContentSend_P(PSTR("}wl(sl);"));
 
@@ -2484,6 +2484,9 @@ void HandleInformation(void)
   if (Settings.flag.mqtt_enabled) {  // SetOption3 - Enable MQTT
     WSContentSend_P(PSTR("}1" D_MQTT_HOST "}2%s"), SettingsText(SET_MQTT_HOST));
     WSContentSend_P(PSTR("}1" D_MQTT_PORT "}2%d"), Settings.mqtt_port);
+#ifdef USE_MQTT_TLS
+    WSContentSend_P(PSTR("}1" D_MQTT_TLS_ENABLE "}2%s"), Settings.flag4.mqtt_tls ? PSTR(D_ENABLED) : PSTR(D_DISABLED));
+#endif // USE_MQTT_TLS
     WSContentSend_P(PSTR("}1" D_MQTT_USER "}2%s"), SettingsText(SET_MQTT_USER));
     WSContentSend_P(PSTR("}1" D_MQTT_CLIENT "}2%s"), mqtt_client);
     WSContentSend_P(PSTR("}1" D_MQTT_TOPIC "}2%s"), SettingsText(SET_MQTT_TOPIC));
@@ -2496,6 +2499,7 @@ void HandleInformation(void)
     }
     WSContentSend_P(PSTR("}1" D_MQTT_FULL_TOPIC "}2%s"), GetTopic_P(stopic, CMND, mqtt_topic, ""));
     WSContentSend_P(PSTR("}1" D_MQTT " " D_FALLBACK_TOPIC "}2%s"), GetFallbackTopic_P(stopic, ""));
+    WSContentSend_P(PSTR("}1" D_MQTT_NO_RETAIN "}2%s"), Settings.flag4.mqtt_no_retain ? PSTR(D_ENABLED) : PSTR(D_DISABLED));
   } else {
     WSContentSend_P(PSTR("}1" D_MQTT "}2" D_DISABLED));
   }
@@ -2613,7 +2617,13 @@ void HandleUploadDone(void)
 
   WSContentStart_P(S_INFORMATION);
   if (!Web.upload_error) {
-    WSContentSend_P(HTTP_SCRIPT_RELOAD_TIME, HTTP_OTA_RESTART_RECONNECT_TIME);  // Refesh main web ui after OTA upgrade
+    uint32_t javascript_settimeout = HTTP_OTA_RESTART_RECONNECT_TIME;
+#if defined(USE_ZIGBEE) && defined(USE_ZIGBEE_EZSP)
+    if (ZigbeeUploadOtaReady()) {
+      javascript_settimeout = 30000;                                  // Refesh main web ui after transfer upgrade
+    }
+#endif
+    WSContentSend_P(HTTP_SCRIPT_RELOAD_TIME, javascript_settimeout);  // Refesh main web ui after OTA upgrade
   }
   WSContentSendStyle();
   WSContentSend_P(PSTR("<div style='text-align:center;'><b>" D_UPLOAD " <font color='#"));
@@ -2634,19 +2644,23 @@ void HandleUploadDone(void)
     stop_flash_rotate = Settings.flag.stop_flash_rotate;  // SetOption12 - Switch between dynamic or fixed slot flash save location
   } else {
     WSContentSend_P(PSTR("%06x'>" D_SUCCESSFUL "</font></b><br>"), WebColor(COL_TEXT_SUCCESS));
-    WSContentSend_P(HTTP_MSG_RSTRT);
-    ShowWebSource(SRC_WEBGUI);
     restart_flag = 2;  // Always restart to re-enable disabled features during update
 #if defined(USE_ZIGBEE) && defined(USE_ZIGBEE_EZSP)
     if (ZigbeeUploadOtaReady()) {
+      WSContentSend_P(PSTR("<br><div style='text-align:center;'>" D_TRANSFER_STARTED " ...</div><br>"));
       restart_flag = 0;  // Hold restart as firmware still needs to be written to MCU EFR32
     }
 #endif  // USE_ZIGBEE and USE_ZIGBEE_EZSP
 #ifdef USE_TASMOTA_CLIENT
     if (TasmotaClient_GetFlagFlashing()) {
-      restart_flag = 0;  // Hold restart as code still needs to be trasnferred to Atmega
+      WSContentSend_P(PSTR("<br><div style='text-align:center;'>" D_TRANSFER_STARTED " ...</div><br>"));
+      restart_flag = 0;  // Hold restart as code still needs to be transferred to Atmega
     }
 #endif  // USE_TASMOTA_CLIENT
+    if (restart_flag) {
+      WSContentSend_P(HTTP_MSG_RSTRT);
+      ShowWebSource(SRC_WEBGUI);
+    }
   }
   SettingsBufferFree();
   WSContentSend_P(PSTR("</div><br>"));
@@ -2723,7 +2737,11 @@ void HandleUploadLoop(void)
       }
       else {
 #if defined(USE_ZIGBEE) && defined(USE_ZIGBEE_EZSP)
+#ifdef ESP8266
         if ((SONOFF_ZB_BRIDGE == my_module_type) && (upload.buf[0] == 0xEB)) {  // Check if this is a Zigbee bridge FW file
+#else  // ESP32
+        if (PinUsed(GPIO_ZIGBEE_RX) && PinUsed(GPIO_ZIGBEE_TX) && (upload.buf[0] == 0xEB)) {  // Check if this is a Zigbee bridge FW file
+#endif  // ESP8266 or ESP32
           Update.end();              // End esp8266 update session
           Web.upload_file_type = UPL_EFR32;
 

@@ -207,6 +207,7 @@ void SetDevicePower(power_t rpower, uint32_t source)
 
   XdrvMailbox.index = rpower;
   XdrvCall(FUNC_SET_POWER);               // Signal power state
+  XsnsCall(FUNC_SET_POWER);               // Signal power state
 
   XdrvMailbox.index = rpower;
   XdrvMailbox.payload = source;
@@ -572,7 +573,7 @@ void ExecuteCommandPower(uint32_t device, uint32_t state, uint32_t source)
     }
 #ifdef USE_DEVICE_GROUPS
     if (SRC_REMOTE != source && SRC_RETRY != source) {
-      if (Settings.flag4.remote_device_mode)  // SetOption88 - Enable relays in separate device groups
+      if (Settings.flag4.multiple_device_groups)  // SetOption88 - Enable relays in separate device groups
         SendDeviceGroupMessage(device - 1, DGR_MSGTYP_UPDATE, DGR_ITEM_POWER, (power >> (device - 1)) & 1 | 0x01000000);  // Explicitly set number of relays to one
       else
         SendLocalDeviceGroupMessage(DGR_MSGTYP_UPDATE, DGR_ITEM_POWER, power);
@@ -651,10 +652,12 @@ void MqttShowState(void)
   ResponseAppendTime();
   ResponseAppend_P(PSTR(",\"" D_JSON_UPTIME "\":\"%s\",\"UptimeSec\":%u"), GetUptime().c_str(), UpTime());
 
+#ifdef ESP8266
 #ifdef USE_ADC_VCC
   dtostrfd((double)ESP.getVcc()/1000, 3, stemp1);
   ResponseAppend_P(PSTR(",\"" D_JSON_VCC "\":%s"), stemp1);
-#endif
+#endif  // USE_ADC_VCC
+#endif  // ESP8266
 
   ResponseAppend_P(PSTR(",\"" D_JSON_HEAPSIZE "\":%d,\"SleepMode\":\"%s\",\"Sleep\":%u,\"LoadAvg\":%u,\"MqttCount\":%u"),
     ESP_getFreeHeap()/1024, GetTextIndexed(stemp1, sizeof(stemp1), Settings.flag3.sleep_normal, kSleepMode),  // SetOption60 - Enable normal sleep instead of dynamic sleep
@@ -1140,7 +1143,7 @@ void Every250mSeconds(void)
       }
       restart_flag--;
       if (restart_flag <= 0) {
-        AddLog_P(LOG_LEVEL_INFO, PSTR(D_LOG_APPLICATION D_RESTARTING));
+        AddLog_P2(LOG_LEVEL_INFO, PSTR(D_LOG_APPLICATION "%s"), (restart_halt) ? "Halted" : D_RESTARTING);
         EspRestart();
       }
     }
@@ -1564,11 +1567,11 @@ void GpioInit(void)
 
 //  AddLogBufferSize(LOG_LEVEL_DEBUG, (uint8_t*)gpio_pin, ARRAY_SIZE(gpio_pin), sizeof(gpio_pin[0]));
 
-#ifdef ESP8266
-  if ((2 == Pin(GPIO_TXD)) || (H801 == my_module_type)) { Serial.set_tx(2); }
-
   analogWriteRange(Settings.pwm_range);      // Default is 1023 (Arduino.h)
   analogWriteFreq(Settings.pwm_frequency);   // Default is 1000 (core_esp8266_wiring_pwm.c)
+
+#ifdef ESP8266
+  if ((2 == Pin(GPIO_TXD)) || (H801 == my_module_type)) { Serial.set_tx(2); }
 
 #ifdef USE_SPI
   spi_flg = (((PinUsed(GPIO_SPI_CS) && (Pin(GPIO_SPI_CS) > 14)) || (Pin(GPIO_SPI_CS) < 12)) || ((PinUsed(GPIO_SPI_DC) && (Pin(GPIO_SPI_DC) > 14)) || (Pin(GPIO_SPI_DC) < 12)));
@@ -1584,8 +1587,6 @@ void GpioInit(void)
   soft_spi_flg = (PinUsed(GPIO_SSPI_CS) && PinUsed(GPIO_SSPI_SCLK) && (PinUsed(GPIO_SSPI_MOSI) || PinUsed(GPIO_SSPI_MISO)));
 #endif  // USE_SPI
 #else // ESP32
-  analogWriteFreqRange(0, Settings.pwm_frequency, Settings.pwm_range);
-
 #ifdef USE_SPI
   if (PinUsed(GPIO_SPI_CS) || PinUsed(GPIO_SPI_DC)) {
     if ((15 == Pin(GPIO_SPI_CS)) && (!GetPin(12) && !GetPin(13) && !GetPin(14))) {  // HSPI
@@ -1686,12 +1687,11 @@ void GpioInit(void)
 
   for (uint32_t i = 0; i < MAX_PWMS; i++) {     // Basic PWM control only
     if (PinUsed(GPIO_PWM1, i)) {
+#ifdef ESP8266
       pinMode(Pin(GPIO_PWM1, i), OUTPUT);
-#ifdef ESP32
-      analogAttach(Pin(GPIO_PWM1, i),i);
-      analogWriteFreqRange(i,Settings.pwm_frequency,Settings.pwm_range);
+#else  // ESP32
+      analogAttach(Pin(GPIO_PWM1, i), i);
 #endif
-
       if (light_type) {
         // force PWM GPIOs to low or high mode, see #7165
         analogWrite(Pin(GPIO_PWM1, i), bitRead(pwm_inverted, i) ? Settings.pwm_range : 0);
@@ -1749,4 +1749,5 @@ void GpioInit(void)
   SetLedLink(Settings.ledstate &8);
 
   XdrvCall(FUNC_PRE_INIT);
+  XsnsCall(FUNC_PRE_INIT);
 }
