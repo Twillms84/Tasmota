@@ -88,7 +88,6 @@ String EscapeJSONString(const char *str) {
 //
 // If the key is not found, returns a nullptr
 // Input: needle cannot be NULL but may be PROGMEM
-#if 0
 const JsonVariant &GetCaseInsensitive(const JsonObject &json, const char *needle) {
   // key can be in PROGMEM
   // if needle == "?" then we return the first valid key
@@ -114,4 +113,3 @@ const JsonVariant &GetCaseInsensitive(const JsonObject &json, const char *needle
 bool HasKeyCaseInsensitive(const JsonObject &json, const char *needle) {
   return &GetCaseInsensitive(json, needle) != nullptr;
 }
-#endif
