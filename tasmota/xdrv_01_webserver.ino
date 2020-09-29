@@ -920,7 +920,7 @@ void StopWebserver(void)
   }
 }
 
-void WifiManagerBegin(bool reset_only, bool admin_mode)
+void WifiManagerBegin(bool reset_only)
 {
   // setup AP
   if (!global_state.wifi_down) {
@@ -941,22 +941,13 @@ void WifiManagerBegin(bool reset_only, bool admin_mode)
   if ((channel < 1) || (channel > 13)) { channel = 1; }
 
   // bool softAP(const char* ssid, const char* passphrase = NULL, int channel = 1, int ssid_hidden = 0, int max_connection = 4);
-  if (admin_mode) {
-    WiFi.softAP(my_hostname, WIFI_AP_PASSPHRASE, channel, 0, 5);
-  } else {
-    WiFi.softAP(my_hostname, EMPTY_STR, channel, 0, 1);
-  }
-
+  WiFi.softAP(my_hostname, WIFI_AP_PASSPHRASE, channel, 0, 1);
   delay(500); // Without delay I've seen the IP address blank
   /* Setup the DNS server redirecting all the domains to the apIP */
   DnsServer->setErrorReplyCode(DNSReplyCode::NoError);
   DnsServer->start(DNS_PORT, "*", WiFi.softAPIP());
 
-  if (admin_mode) {
-    StartWebserver(HTTP_ADMIN, WiFi.softAPIP());
-  } else {
-    StartWebserver((reset_only ? HTTP_MANAGER_RESET_ONLY : HTTP_MANAGER), WiFi.softAPIP());
-  }
+  StartWebserver((reset_only ? HTTP_MANAGER_RESET_ONLY : HTTP_MANAGER), WiFi.softAPIP());
 }
 
 void PollDnsWebserver(void)
@@ -2770,9 +2761,6 @@ void HandleUploadDone(void)
   WSContentSpaceButton(BUTTON_MAIN);
   WSContentStop();
 
-#if defined(USE_ZIGBEE) && defined(USE_ZIGBEE_EZSP)
-  ZigbeeUploadXmodem();
-#endif  // USE_ZIGBEE and USE_ZIGBEE_EZSP
 #ifdef USE_TASMOTA_CLIENT
   if (TasmotaClient_GetFlagFlashing()) {
     TasmotaClient_Flash();
@@ -3356,22 +3344,18 @@ bool JsonWebColor(const char* dataBuf)
   // Default pre v7 (Light theme)
   // {"WebColor":["#000","#fff","#f2f2f2","#000","#fff","#000","#fff","#f00","#008000","#fff","#1fa3ec","#0e70a4","#d43535","#931f1f","#47c266","#5aaf6f","#fff","#999","#000"]}	  // {"WebColor":["#000000","#ffffff","#f2f2f2","#000000","#ffffff","#000000","#ffffff","#ff0000","#008000","#ffffff","#1fa3ec","#0e70a4","#d43535","#931f1f","#47c266","#5aaf6f","#ffffff","#999999","#000000"]}
 
-  char dataBufLc[strlen(dataBuf) +1];
-  LowerCase(dataBufLc, dataBuf);
-  RemoveSpace(dataBufLc);
-  if (strlen(dataBufLc) < 9) { return false; }  // Workaround exception if empty JSON like {} - Needs checks
-
-  StaticJsonBuffer<450> jb;  // 421 from https://arduinojson.org/v5/assistant/
-  JsonObject& obj = jb.parseObject(dataBufLc);
-  if (!obj.success()) { return false; }
-
-  char parm_lc[10];
-  if (obj[LowerCase(parm_lc, D_CMND_WEBCOLOR)].success()) {
-    for (uint32_t i = 0; i < COL_LAST; i++) {
-      const char* color = obj[parm_lc][i];
-      if (color != nullptr) {
-        WebHexCode(i, color);
+  JsonParser parser((char*) dataBuf);
+  JsonParserObject root = parser.getRootObject();
+  JsonParserArray arr = root[PSTR(D_CMND_WEBCOLOR)].getArray();
+  if (arr) {  // if arr is valid, i.e. json is valid, the key D_CMND_WEBCOLOR was found and the token is an arra
+    uint32_t i = 0;
+    for (auto color : arr) {
+      if (i < COL_LAST) {
+        WebHexCode(i, color.getStr());
+      } else {
+        break;
       }
+      i++;
     }
   }
   return true;
