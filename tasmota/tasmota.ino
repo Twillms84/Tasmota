@@ -50,8 +50,8 @@
 #include <ESP8266HTTPClient.h>              // Ota
 #include <ESP8266httpUpdate.h>              // Ota
 #include <StreamString.h>                   // Webserver, Updater
-#include <JsonParser.h>
-#include <JsonGenerator.h>
+//#include <JsonParser.h>
+//#include <JsonGenerator.h>1
 #ifdef USE_ARDUINO_OTA
   #include <ArduinoOTA.h>                   // Arduino OTA
   #ifndef USE_DISCOVERY
