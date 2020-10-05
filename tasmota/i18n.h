@@ -192,6 +192,7 @@
 #define D_JSON_PV2_POWER "Pv2Power"
 #define D_JSON_SOLAR_POWER "SolarPower"
 #define D_JSON_USAGE "Usage"
+#define D_JSON_IMPORT "Import"
 #define D_JSON_EXPORT "Export"
 #define D_JSON_TOTAL_ACTIVE "TotalActive"
 
@@ -615,6 +616,7 @@
 // Commands xdrv_34_pwm_dimmer.ino
 #ifdef USE_PWM_DIMMER
 #define D_CMND_BRI_PRESET "BriPreset"
+#define D_CMND_PWM_DIMMER_PWMS "PWMDimmerPWMs"
 #endif
 
 // Commands xdrv_38_ping.ino
