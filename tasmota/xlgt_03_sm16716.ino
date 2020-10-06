@@ -201,4 +201,3 @@ bool Xlgt03(uint8_t function)
 
 #endif  // USE_SM16716
 #endif  // USE_LIGHT
-

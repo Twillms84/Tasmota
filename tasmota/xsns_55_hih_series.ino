@@ -133,4 +133,3 @@ bool Xsns55(uint8_t function)
 
 #endif  // USE_HIH6
 #endif  // USE_I2C
-

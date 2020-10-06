@@ -284,4 +284,3 @@ bool Xsns08(uint8_t function)
 
 #endif  // USE_HTU
 #endif  // USE_I2C
-

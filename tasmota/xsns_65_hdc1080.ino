@@ -321,4 +321,3 @@ bool Xsns65(uint8_t function)
 
 #endif  // USE_HDC1080
 #endif  // USE_I2C
-

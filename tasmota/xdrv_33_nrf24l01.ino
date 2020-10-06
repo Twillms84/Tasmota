@@ -96,4 +96,3 @@ bool Xdrv33(uint8_t function)
 
 #endif  // USE_NRF24
 #endif  // USE_SPI
-
