@@ -488,10 +488,17 @@ bool SendKey(uint32_t key, uint32_t device, uint32_t state)
     Response_P(PSTR("{\"%s%d\":{\"State\":%d}}"), (key) ? "Switch" : "Button", device, state);
     result = XdrvRulesProcess();
   }
+#ifdef USE_PWM_DIMMER
+  if (PWM_DIMMER == my_module_type && !result) {
+#endif  // USE_PWM_DIMMER
   int32_t payload_save = XdrvMailbox.payload;
   XdrvMailbox.payload = device_save << 24 | key << 16 | state << 8 | device;
   XdrvCall(FUNC_ANY_KEY);
   XdrvMailbox.payload = payload_save;
+#ifdef USE_PWM_DIMMER
+    result = true;
+  }
+#endif  // USE_PWM_DIMMER
   return result;
 }
 
@@ -1635,12 +1642,20 @@ void GpioInit(void)
 #endif  // ESP8266 - ESP32
   soft_spi_flg = (PinUsed(GPIO_SSPI_SCLK) && (PinUsed(GPIO_SSPI_MOSI) || PinUsed(GPIO_SSPI_MISO)));
 
-  // Set any non-used GPIO to INPUT - Related to resetPins() in support_legacy_cores.ino
-  // Doing it here solves relay toggles at restart.
   for (uint32_t i = 0; i < ARRAY_SIZE(my_module.io); i++) {
     uint32_t mpin = ValidPin(i, my_module.io[i]);
 //    AddLog_P2(LOG_LEVEL_DEBUG, PSTR("INI: gpio pin %d, mpin %d"), i, mpin);
-    if (((i < 6) || (i > 11)) && (0 == mpin)) {  // Skip SPI flash interface
+    if (AGPIO(GPIO_OUTPUT_HI) == mpin) {
+      pinMode(i, OUTPUT);
+      digitalWrite(i, 1);
+    }
+    else if (AGPIO(GPIO_OUTPUT_LO) == mpin) {
+      pinMode(i, OUTPUT);
+      digitalWrite(i, 0);
+    }
+    // Set any non-used GPIO to INPUT - Related to resetPins() in support_legacy_cores.ino
+    // Doing it here solves relay toggles at restart.
+    else if (((i < 6) || (i > 11)) && (GPIO_NONE == mpin)) {  // Skip SPI flash interface
       if (!((1 == i) || (3 == i))) {             // Skip serial
         pinMode(i, INPUT);
       }

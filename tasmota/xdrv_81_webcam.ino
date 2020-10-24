@@ -896,9 +896,9 @@ void WcLoop(void) {
 }
 
 void WcPicSetup(void) {
-  Webserver->on("/wc.jpg", HandleImage);
-  Webserver->on("/wc.mjpeg", HandleImage);
-  Webserver->on("/snapshot.jpg", HandleImageBasic);
+  WebServer_on(PSTR("/wc.jpg"), HandleImage);
+  WebServer_on(PSTR("/wc.mjpeg"), HandleImage);
+  WebServer_on(PSTR("/snapshot.jpg"), HandleImage);
 }
 
 void WcShowStream(void) {
