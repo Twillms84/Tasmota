@@ -95,9 +95,11 @@ void WifiConfig(uint8_t type)
     }
 #endif  // USE_WEBSERVER
 
-    Wifi.config_counter = WIFI_CONFIG_SEC;   // Allow up to WIFI_CONFIG_SECS seconds for phone to provide ssid/pswd
-    Wifi.counter = Wifi.config_counter +5;
-    TasmotaGlobal.blinks = 255;
+if (WIFI_PERM_AP != type) {
+      Wifi.config_counter = WIFI_CONFIG_SEC;   // Allow up to WIFI_CONFIG_SECS seconds for phone to provide ssid/pswd
+      Wifi.counter = Wifi.config_counter +5;
+      TasmotaGlobal.blinks = 255;
+    }
     if (WIFI_RESTART == Wifi.config_type) {
       TasmotaGlobal.restart_flag = 2;
     }
@@ -105,9 +107,13 @@ void WifiConfig(uint8_t type)
       AddLog_P(LOG_LEVEL_INFO, S_LOG_WIFI, PSTR(D_WCFG_6_SERIAL " " D_ACTIVE_FOR_3_MINUTES));
     }
 #ifdef USE_WEBSERVER
+     else if (WIFI_PERM_AP == type) {
+      WifiManagerBegin(false, true);
+      return;
+    }
     else if (WIFI_MANAGER == Wifi.config_type || WIFI_MANAGER_RESET_ONLY == Wifi.config_type) {
       AddLog_P(LOG_LEVEL_INFO, S_LOG_WIFI, PSTR(D_WCFG_2_WIFIMANAGER " " D_ACTIVE_FOR_3_MINUTES));
-      WifiManagerBegin(WIFI_MANAGER_RESET_ONLY == Wifi.config_type);
+      WifiManagerBegin(WIFI_MANAGER_RESET_ONLY == Wifi.config_type, false);
     }
 #endif  // USE_WEBSERVER
   }
@@ -479,10 +485,13 @@ void WifiCheckIp(void)
 
 void WifiCheck(uint8_t param)
 {
-  Wifi.counter--;
+    if (WIFI_PERM_AP != Wifi.config_type) { // not for WIFI_PERM_AP mode
+    Wifi.counter--;
+  }
   switch (param) {
   case WIFI_SERIAL:
   case WIFI_MANAGER:
+  case WIFI_PERM_AP:
     WifiConfig(param);
     break;
   default:
