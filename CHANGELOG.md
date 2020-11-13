@@ -9,6 +9,8 @@ All notable changes to this project will be documented in this file.
 - Zigbee alarm persistence (#9785)
 - Support for EZO PMP sensors by Christopher Tremblay (#9760)
 - Commands ``TuyaRGB``, ``TuyaEnum`` and ``TuyaEnumList`` (#9769)
+- Zigbee command ``ZbInfo`` and prepare support for EEPROM
+- Support for AS608 optical and R503 capacitive fingerprint sensor
 
 ### Changed
 - Core library from v2.7.4.5 to v2.7.4.7
@@ -18,6 +20,9 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 - NTP fallback server functionality (#9739)
+- Telegram group chatid not supported (#9831)
+- KNX buttons, switches and sensors detection regression from v9.1.0 (#9811)
+- GUI MqttUser and MqttPassword updates when TLS is compiled in (#9825)
 
 ### Removed
 - Version compatibility check

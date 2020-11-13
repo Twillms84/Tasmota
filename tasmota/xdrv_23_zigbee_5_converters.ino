@@ -231,7 +231,7 @@ const Z_AttributeConverter Z_PostProcess[] PROGMEM = {
   //{ Zmap8,    Cx0005, 0x0004,  (NameSupport),           Cm1, 0 },
 
   // On/off cluster
-  { Zbool,    Cx0006,    0x0000,  Z_(Power),             Cm1, 0 },
+  { Zbool,    Cx0006,    0x0000,  Z_(Power),             Cm1 + Z_EXPORT_DATA, Z_MAPPING(Z_Data_OnOff, power) },
   { Zenum8,   Cx0006,    0x4003,  Z_(StartUpOnOff),      Cm1, 0 },
   { Zbool,    Cx0006,    0x8000,  Z_(Power),             Cm1, 0 },   // See 7280
 
@@ -558,8 +558,8 @@ const Z_AttributeConverter Z_PostProcess[] PROGMEM = {
 
   // IAS Cluster (Intruder Alarm System)
   { Zenum8,   Cx0500, 0x0000,  Z_(ZoneState),            Cm1, 0 },    // Occupancy (map8)
-  { Zenum16,  Cx0500, 0x0001,  Z_(ZoneType),             Cm1, Z_MAPPING(Z_Data_Alarm, zone_type) },    // Zone type for sensor
-  { Zmap16,   Cx0500, 0x0002,  Z_(ZoneStatus),           Cm1, Z_MAPPING(Z_Data_Alarm, zone_status) },    // Zone status for sensor
+  { Zenum16,  Cx0500, 0x0001,  Z_(ZoneType),             Cm1 + Z_EXPORT_DATA, Z_MAPPING(Z_Data_Alarm, zone_type) },    // Zone type for sensor
+  { Zmap16,   Cx0500, 0x0002,  Z_(ZoneStatus),           Cm1 + Z_EXPORT_DATA, Z_MAPPING(Z_Data_Alarm, zone_status) },    // Zone status for sensor
   { Zbool,    Cx0500, 0xFFF0,  Z_(Contact),              Cm1, Z_MAPPING(Z_Data_Alarm, zone_status) },    // We fit the first bit in the LSB
 
   // Metering (Smart Energy) cluster
@@ -883,7 +883,6 @@ int32_t encodeSingleAttribute(class SBuffer &buf, double val_d, const char *val_
       break;
 
     case Zsingle:      // float
-      uint32_t *f_ptr;
       buf.add32( *((uint32_t*)&f32) );    // cast float as uint32_t
       break;
 
@@ -1023,7 +1022,7 @@ uint32_t parseSingleAttribute(Z_attribute & attr, const SBuffer &buf,
       {
         int32_t int32_val = buf.get32(i);
         // i += 4;
-        if (0x80000000 != int32_val) {
+        if (-0x80000000 != int32_val) {
           attr.setInt(int32_val);
         }
       }
@@ -1805,9 +1804,9 @@ void Z_postProcessAttributes(uint16_t shortaddr, uint16_t src_ep, class Z_attrib
       // Look for an entry in the converter table
       bool found = false;
       const char * conv_name;
-      Z_Data_Type map_type;
-      uint8_t map_offset;
-      uint8_t zigbee_type;
+      Z_Data_Type map_type = Z_Data_Type::Z_Unknown;
+      uint8_t map_offset = 0;
+      uint8_t zigbee_type = Znodata;
       int8_t conv_multiplier;
       for (uint32_t i = 0; i < ARRAY_SIZE(Z_PostProcess); i++) {
         const Z_AttributeConverter *converter = &Z_PostProcess[i];
@@ -1844,6 +1843,7 @@ void Z_postProcessAttributes(uint16_t shortaddr, uint16_t src_ep, class Z_attrib
         switch (zigbee_type) {
           case Zenum8:
           case Zmap8:
+          case Zbool:
           case Zuint8:  *(uint8_t*)attr_address  = uval32;          break;
           case Zenum16:
           case Zmap16:
@@ -1860,7 +1860,6 @@ void Z_postProcessAttributes(uint16_t shortaddr, uint16_t src_ep, class Z_attrib
 
       uint16_t uval16 = attr.getUInt();     // call converter to uint only once
       int16_t  ival16 = attr.getInt();     // call converter to int only once
-      Z_Data_Set & data = device.data;
       // update any internal structure
       switch (ccccaaaa) {
         case 0x00000004: device.setManufId(attr.getStr());                            break;
@@ -1936,7 +1935,6 @@ bool Z_parseAttributeKey(class Z_attribute & attr) {
     // scan attributes to find by name, and retrieve type
     for (uint32_t i = 0; i < ARRAY_SIZE(Z_PostProcess); i++) {
       const Z_AttributeConverter *converter = &Z_PostProcess[i];
-      bool match = false;
       uint16_t local_attr_id = pgm_read_word(&converter->attribute);
       uint16_t local_cluster_id = CxToCluster(pgm_read_byte(&converter->cluster_short));
       uint8_t  local_type_id = pgm_read_byte(&converter->type);
@@ -1969,12 +1967,14 @@ bool Z_parseAttributeKey(class Z_attribute & attr) {
 // Input:
 //  the Json object to add attributes to
 //  the type of object (necessary since the type system is unaware of the actual sub-type)
-void Z_Data::toAttributes(Z_attribute_list & attr_list, Z_Data_Type type) const {
+void Z_Data::toAttributes(Z_attribute_list & attr_list) const {
+  Z_Data_Type type = getType();
   // iterate through attributes to see which ones need to be exported
   for (uint32_t i = 0; i < ARRAY_SIZE(Z_PostProcess); i++) {
     const Z_AttributeConverter *converter = &Z_PostProcess[i];
     uint8_t conv_export = pgm_read_byte(&converter->multiplier_idx) & Z_EXPORT_DATA;
     uint8_t conv_mapping = pgm_read_byte(&converter->mapping);
+    int8_t  multiplier = CmToMultiplier(pgm_read_byte(&converter->multiplier_idx));
     Z_Data_Type map_type = (Z_Data_Type) ((conv_mapping & 0xF0)>>4);
     uint8_t map_offset = (conv_mapping & 0x0F);
 
@@ -1982,7 +1982,7 @@ void Z_Data::toAttributes(Z_attribute_list & attr_list, Z_Data_Type type) const 
       // we need to export this attribute
       const char * conv_name = Z_strings + pgm_read_word(&converter->name_offset);
       uint8_t zigbee_type = pgm_read_byte(&converter->type);                    // zigbee type to select right size 8/16/32 bits
-      uint8_t *attr_address = ((uint8_t*)this) + sizeof(Z_Data) + map_offset;   // address of attribute in memory
+      uint8_t * attr_address = ((uint8_t*)this) + sizeof(Z_Data) + map_offset;   // address of attribute in memory
 
       int32_t data_size = 0;
       int32_t ival32;
@@ -1990,6 +1990,7 @@ void Z_Data::toAttributes(Z_attribute_list & attr_list, Z_Data_Type type) const 
       switch (zigbee_type) {
         case Zenum8:
         case Zmap8:
+        case Zbool:
         case Zuint8:  uval32 = *(uint8_t*)attr_address;   if (uval32 != 0xFF)        data_size = 8;   break;
         case Zmap16:
         case Zenum16:
@@ -2002,8 +2003,12 @@ void Z_Data::toAttributes(Z_attribute_list & attr_list, Z_Data_Type type) const 
       if (data_size != 0) {
         Z_attribute & attr = attr_list.addAttribute(conv_name);
 
-        if (data_size > 0) { attr.setUInt(uval32); }
-        else { attr.setInt(ival32); }
+        float fval = (data_size > 0) ? uval32 : ival32;
+        if ((1 != multiplier) && (0 != multiplier)) {
+          if (multiplier > 0) { fval =  fval * multiplier; }
+          else                { fval =  fval / (-multiplier); }
+        }
+        attr.setFloat(fval);
       }
     }
   }
