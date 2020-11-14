@@ -11,6 +11,9 @@ All notable changes to this project will be documented in this file.
 - Commands ``TuyaRGB``, ``TuyaEnum`` and ``TuyaEnumList`` (#9769)
 - Zigbee command ``ZbInfo`` and prepare support for EEPROM
 - Support for AS608 optical and R503 capacitive fingerprint sensor
+- Command ``SetOption115 1`` to enable ESP32 MiBle
+- Zigbee command ``ZbLeave`` to unpair a device
+- Zigbee ``SetOption116 1`` to disable auto-query of light devices (avoids network storms with large groups)
 
 ### Changed
 - Core library from v2.7.4.5 to v2.7.4.7
