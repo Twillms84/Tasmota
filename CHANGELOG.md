@@ -3,7 +3,23 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased] - Development
 
-## [9.1.0.1]
+## [9.1.0.2]
+### Added
+- KNX read reply for Power (#9236, #9891)
+
+### Breaking Changed
+- KNX DPT9 (16-bit float) to DPT14 (32-bit float) by Adrian Scillato (#9811, #9888)
+
+### Changed
+- Shelly Dimmer fw upgrade using WebGUI Firmware Upgrade and file from folder `tools/fw_shd_stm32/`
+- MQTT Wifi connection timeout from 5000 to 200 mSec (#9886)
+
+### Fixed
+- KNX ESP32 UDP mulicastpackage (#9811)
+
+### Removed
+
+## [9.1.0.1] - 20201116
 ### Added
 - Zigbee support for Mi Door and Contact (#9759)
 - Zigbee alarm persistence (#9785)
@@ -13,7 +29,9 @@ All notable changes to this project will be documented in this file.
 - Support for AS608 optical and R503 capacitive fingerprint sensor
 - Command ``SetOption115 1`` to enable ESP32 MiBle
 - Zigbee command ``ZbLeave`` to unpair a device
-- Zigbee ``SetOption116 1`` to disable auto-query of light devices (avoids network storms with large groups)
+- Command ``SetOption116 1`` to disable auto-query of zigbee light devices (avoids network storms with large groups)
+- Support for Shelly Dimmer 1 and 2 by James Turton (#9854)
+- IRremoteESP8266 library from v2.7.11 to v2.7.12
 
 ### Changed
 - Core library from v2.7.4.5 to v2.7.4.7

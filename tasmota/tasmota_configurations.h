@@ -53,7 +53,8 @@
 //#undef USE_DEVICE_GROUPS                        // Disable support for device groups (+5k6 code)
 #undef USE_PWM_DIMMER                           // Disable support for MJ-SD01/acenx/NTONPOWER PWM dimmers (+4k5 code)
 #undef USE_KEELOQ                               // Disable support for Jarolift rollers by Keeloq algorithm (+4k5 code)
-#undef USE_SONOFF_D1                            // DIsable support for Sonoff D1 Dimmer (+0k7 code)
+#undef USE_SONOFF_D1                            // Disable support for Sonoff D1 Dimmer (+0k7 code)
+#undef USE_SHELLY_DIMMER                        // Disable support for Shelly Dimmer (+3k code)
 
 // -- Optional light modules ----------------------
 #define USE_LIGHT                                // Add Dimmer/Light support
@@ -270,6 +271,7 @@
 #undef USE_PWM_DIMMER_REMOTE                     // Disbale support for remote switches to PWM Dimmer
 #undef USE_KEELOQ                                // Disable support for Jarolift rollers by Keeloq algorithm (+4k5 code)
 #undef USE_SONOFF_D1                             // Disable support for Sonoff D1 Dimmer (+0k7 code)
+#undef USE_SHELLY_DIMMER                         // Disable support for Shelly Dimmer (+3k code)
 
 #undef USE_ENERGY_SENSOR                         // Disable energy sensors (-14k code)
   #undef USE_PZEM004T                            // Disable PZEM004T energy sensor
@@ -363,6 +365,7 @@
 #undef USE_SONOFF_L1                             // Disable support for Sonoff L1 led control
 #undef USE_ELECTRIQ_MOODL                        // Disable support for ElectriQ iQ-wifiMOODL RGBW LED controller
 #undef USE_LIGHT_PALETTE                         // Disable support for color palette (+0k9 code)
+#undef USE_SHELLY_DIMMER                         // Disable support for Shelly Dimmer (+3k code)
 
 #undef USE_COUNTER                               // Disable counters
 #define USE_ADC_VCC                              // Display Vcc in Power status. Disable for use as Analog input on selected devices
@@ -506,6 +509,7 @@
 #undef USE_SONOFF_L1                             // Disable support for Sonoff L1 led control
 #undef USE_ELECTRIQ_MOODL                        // Disable support for ElectriQ iQ-wifiMOODL RGBW LED controller
 #undef USE_LIGHT_PALETTE                         // Disable support for color palette (+0k9 code)
+#undef USE_SHELLY_DIMMER                         // Disable support for Shelly Dimmer (+3k code)
 
 #undef USE_COUNTER                               // Disable counters
 #define USE_ADC_VCC                              // Display Vcc in Power status. Disable for use as Analog input on selected devices
@@ -640,6 +644,7 @@
 #undef USE_SONOFF_L1                             // Disable support for Sonoff L1 led control
 #undef USE_ELECTRIQ_MOODL                        // Disable support for ElectriQ iQ-wifiMOODL RGBW LED controller
 #undef USE_LIGHT_PALETTE                         // Disable support for color palette (+0k9 code)
+#undef USE_SHELLY_DIMMER                         // Disable support for Shelly Dimmer (+3k code)
 
 #undef USE_COUNTER                               // Disable counters
 #define USE_ADC_VCC                              // Display Vcc in Power status. Disable for use as Analog input on selected devices
@@ -772,6 +777,7 @@
 #undef USE_ELECTRIQ_MOODL                        // Disable support for ElectriQ iQ-wifiMOODL RGBW LED controller
 #undef USE_LIGHT_PALETTE                         // Disable support for color palette (+0k9 code)
 #undef USE_DGR_LIGHT_SEQUENCE                    // Disable support for device group light sequencing (requires USE_DEVICE_GROUPS) (+0k2 code)
+#undef USE_SHELLY_DIMMER                         // Disable support for Shelly Dimmer (+3k code)
 
 #undef USE_COUNTER                               // Disable counters
 #define USE_ADC_VCC                              // Display Vcc in Power status. Disable for use as Analog input on selected devices
