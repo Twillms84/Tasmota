@@ -964,6 +964,12 @@ void WifiManagerBegin(bool reset_only, bool admin_mode)
   } else {
     WiFi.softAP(TasmotaGlobal.hostname, EMPTY_STR, channel, 0, 1);
   }
+    // bool softAP(const char* ssid, const char* passphrase = NULL, int channel = 1, int ssid_hidden = 0, int max_connection = 4);
+  if (admin_mode) {
+    WiFi.softAP(TasmotaGlobal.hostname, WIFI_AP_PASSPHRASE, channel, 0, 5);
+  } else {
+    WiFi.softAP(TasmotaGlobal.hostname, EMPTY_STR, channel, 0, 1);
+  }
   delay(500); // Without delay I've seen the IP address blank
   /* Setup the DNS server redirecting all the domains to the apIP */
   DnsServer->setErrorReplyCode(DNSReplyCode::NoError);
