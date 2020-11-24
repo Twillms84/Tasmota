@@ -1168,7 +1168,7 @@ int ResponseJsonEndEnd(void)
 
 #ifdef ESP8266
 uint16_t GpioConvert(uint8_t gpio) {
-  if (gpio > ARRAY_SIZE(kGpioConvert)) {
+  if (gpio >= ARRAY_SIZE(kGpioConvert)) {
     return AGPIO(GPIO_USER);
   }
   return pgm_read_word(kGpioConvert + gpio);
@@ -1380,7 +1380,7 @@ void GetInternalTemplate(void* ptr, uint32_t module, uint32_t option) {
 }
 #endif  // ESP8266
 
-void ModuleGpios(myio *gp)
+void TemplateGpios(myio *gp)
 {
   uint16_t *dest = (uint16_t *)gp;
   uint16_t src[ARRAY_SIZE(Settings.user_template.gp.io)];
