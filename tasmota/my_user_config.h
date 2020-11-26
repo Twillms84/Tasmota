@@ -418,6 +418,7 @@
 //  #define USE_WEBSEND_RESPONSE                   // Enable command WebSend response message (+1k code)
   #define USE_EMULATION_HUE                      // Enable Hue Bridge emulation for Alexa (+14k code, +2k mem common)
   #define USE_EMULATION_WEMO                     // Enable Belkin WeMo emulation for Alexa (+6k code, +2k mem common)
+  // #define USE_CCLOADER                           // Enable CCLoader FW upgrade tool (for CC25xx devices)
 
 // -- mDNS ----------------------------------------
 #define USE_DISCOVERY                            // Enable mDNS for the following services (+8k code or +23.5k code with core 2_5_x, +0.3k mem)
@@ -598,6 +599,7 @@
       #define MTX_ADDRESS7     0x00              // [DisplayAddress7] I2C address of seventh 8x8 matrix module
       #define MTX_ADDRESS8     0x00              // [DisplayAddress8] I2C address of eigth 8x8 matrix module
     #define USE_DISPLAY_SEVENSEG                 // [DisplayModel 11] [I2cDriver47] Enable sevenseg display (I2C 0x70-0x77) (<+11k code)
+//      #define USE_DISPLAY_SEVENSEG_COMMON_ANODE  // Enable support for common anode sevenseg displays
                                                  // Multiple sevenseg displays are logically arranged vertically with MTX_ADDRESS1 at y=0,
                                                  // MTX_ADDRESS2 at y=1, up to MTX_ADDRESS8 at y=7
                                                  // Command: DisplayText [yn]8888

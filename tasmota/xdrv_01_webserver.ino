@@ -40,7 +40,7 @@ const uint16_t HTTP_OTA_RESTART_RECONNECT_TIME = 24000;  // milliseconds - Allow
 #include <ESP8266WebServer.h>
 #include <DNSServer.h>
 
-enum UploadTypes { UPL_TASMOTA, UPL_SETTINGS, UPL_EFM8BB1, UPL_TASMOTACLIENT, UPL_EFR32, UPL_SHD };
+enum UploadTypes { UPL_TASMOTA, UPL_SETTINGS, UPL_EFM8BB1, UPL_TASMOTACLIENT, UPL_EFR32, UPL_SHD, UPL_CCL };
 
 #ifdef USE_UNISHOX_COMPRESSION
 #ifdef USE_JAVASCRIPT_ES6
@@ -2575,7 +2575,7 @@ void HandleInformation(void)
 
 /*-------------------------------------------------------------------------------------------*/
 
-#if defined(USE_ZIGBEE_EZSP) || defined(USE_TASMOTA_CLIENT) || defined(SHELLY_FW_UPGRADE) || defined(USE_RF_FLASH)
+#if defined(USE_ZIGBEE_EZSP) || defined(USE_TASMOTA_CLIENT) || defined(SHELLY_FW_UPGRADE) || defined(USE_RF_FLASH) || defined(USE_CCLOADER)
 #define USE_WEB_FW_UPGRADE
 #endif
 
@@ -2605,7 +2605,7 @@ uint32_t BUploadWriteBuffer(uint8_t *buf, size_t size) {
     }
   }
   BUpload.spi_sector_cursor++;
-  if (!ESP.flashWrite((BUpload.spi_sector_counter * SPI_FLASH_SEC_SIZE) + ((BUpload.spi_sector_cursor -1) * 2048), (uint32_t*)buf, size)) {
+  if (!ESP.flashWrite((BUpload.spi_sector_counter * SPI_FLASH_SEC_SIZE) + ((BUpload.spi_sector_cursor -1) * HTTP_UPLOAD_BUFLEN), (uint32_t*)buf, size)) {
     return 7;  // Upload aborted - flash failed
   }
   BUpload.spi_hex_size += size;
@@ -2786,6 +2786,11 @@ void HandleUploadLoop(void)
         BUploadInit(UPL_SHD);
       }
 #endif  // SHELLY_FW_UPGRADE
+#ifdef USE_CCLOADER
+      else if (CCLChipFound() && 0x02 == upload.buf[0]) { // the 0x02 is only an assumption!!
+        BUploadInit(UPL_CCL);
+      }
+#endif  // USE_CCLOADER
 #ifdef USE_ZIGBEE_EZSP
 #ifdef ESP8266
       else if ((SONOFF_ZB_BRIDGE == TasmotaGlobal.module_type) && (0xEB == upload.buf[0])) {  // Check if this is a Zigbee bridge FW file
@@ -2833,6 +2838,8 @@ void HandleUploadLoop(void)
 #ifdef USE_WEB_FW_UPGRADE
     else if (BUpload.active) {
       // Write a block
+//      AddLog_P(LOG_LEVEL_DEBUG, PSTR("DBG: Size %d"), upload.currentSize);
+//      AddLogBuffer(LOG_LEVEL_DEBUG, upload.buf, 32);
       Web.upload_error = BUploadWriteBuffer(upload.buf, upload.currentSize);
       if (Web.upload_error != 0) { return; }
     }
@@ -2900,8 +2907,7 @@ void HandleUploadLoop(void)
 
       AddLog_P(LOG_LEVEL_INFO, PSTR(D_LOG_UPLOAD "Transfer %u bytes"), upload.totalSize);
 
-//      uint8_t* data = (uint8_t*)(0x40200000 + (FlashWriteStartSector() * SPI_FLASH_SEC_SIZE));
-        uint8_t* data = FlashDirectAccess();
+      uint8_t* data = FlashDirectAccess();
 
 //      uint32_t* values = (uint32_t*)(data);  // Only 4-byte access allowed
 //      AddLog_P(LOG_LEVEL_DEBUG, PSTR(D_LOG_UPLOAD "Head 0x%08X"), values[0]);
@@ -2914,12 +2920,17 @@ void HandleUploadLoop(void)
 #endif  // USE_RF_FLASH
 #ifdef USE_TASMOTA_CLIENT
       if (UPL_TASMOTACLIENT == Web.upload_file_type) {
-        error = TasmotaClient_Flash(FlashWriteStartSector() * SPI_FLASH_SEC_SIZE, BUpload.spi_hex_size);
+        error = TasmotaClient_Flash(data, BUpload.spi_hex_size);
       }
 #endif  // USE_TASMOTA_CLIENT
 #ifdef SHELLY_FW_UPGRADE
       if (UPL_SHD == Web.upload_file_type) {
         error = ShdFlash(data, BUpload.spi_hex_size);
+      }
+#endif  // SHELLY_FW_UPGRADE
+#ifdef USE_CCLOADER
+      if (UPL_CCL == Web.upload_file_type) {
+        error = CLLFlashFirmware(data, BUpload.spi_hex_size);
       }
 #endif  // SHELLY_FW_UPGRADE
 #ifdef USE_ZIGBEE_EZSP
