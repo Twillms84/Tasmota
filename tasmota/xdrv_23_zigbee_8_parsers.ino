@@ -20,6 +20,8 @@
 #ifdef USE_ZIGBEE
 
 #ifdef USE_ZIGBEE_EZSP
+void EZ_SendZDO(uint16_t shortaddr, uint16_t cmd, const unsigned char *payload, size_t payload_len, bool retry = true);
+
 //
 // Trying to get a uniform LQI measure, we are aligning with the definition of ZNP
 // I.e. a linear projection from -87dBm to +10dB over 0..255
@@ -200,6 +202,44 @@ int32_t EZ_MessageSent(int32_t res, const class SBuffer &buf) {
 
 #endif // USE_ZIGBEE_EZSP
 
+/*********************************************************************************************\
+ * Handle auto-mapping
+\*********************************************************************************************/
+// low-level sending of packet
+void Z_Send_State_or_Map(uint16_t shortaddr, uint8_t index, uint16_t zdo_cmd) {
+#ifdef USE_ZIGBEE_ZNP
+  SBuffer buf(10);
+  buf.add8(Z_SREQ | Z_ZDO);             // 25
+  buf.add8(zdo_cmd);                    // 33
+  buf.add16(shortaddr);                 // shortaddr
+  buf.add8(index);                      // StartIndex = 0
+
+  ZigbeeZNPSend(buf.getBuffer(), buf.len());
+#endif // USE_ZIGBEE_ZNP
+
+
+#ifdef USE_ZIGBEE_EZSP
+  // ZDO message payload (see Zigbee spec 2.4.3.3.4)
+  uint8_t buf[] = { index };           // index = 0
+
+  EZ_SendZDO(shortaddr, zdo_cmd, buf, sizeof(buf), false);
+#endif // USE_ZIGBEE_EZSP
+}
+
+// This callback is registered to send ZbMap(s) to each device one at a time
+void Z_Map(uint16_t shortaddr, uint16_t groupaddr, uint16_t cluster, uint8_t endpoint, uint32_t value) {
+  if (BAD_SHORTADDR != shortaddr) {
+    AddLog_P(LOG_LEVEL_INFO, PSTR(D_LOG_ZIGBEE "sending `ZnMap 0x%04X`"), shortaddr);
+#ifdef USE_ZIGBEE_ZNP
+    Z_Send_State_or_Map(shortaddr, value, ZDO_MGMT_LQI_REQ);
+#endif // USE_ZIGBEE_ZNP
+#ifdef USE_ZIGBEE_EZSP
+    Z_Send_State_or_Map(shortaddr, value, ZDO_Mgmt_Lqi_req);
+#endif // USE_ZIGBEE_EZSP
+  } else {
+    AddLog_P(LOG_LEVEL_INFO, PSTR(D_LOG_ZIGBEE "ZbMap done"));
+  }
+}
 /*********************************************************************************************\
  * Parsers for incoming EZSP messages
 \*********************************************************************************************/
@@ -660,6 +700,7 @@ int32_t Z_ReceiveSimpleDesc(int32_t res, const class SBuffer &buf) {
   const size_t      numInIndex = 11;
   const size_t      numOutIndex = 12 + numInCluster*2;
 #endif
+  bool is_tuya_protocol = false;
 
   if (0 == status) {
     // device is reachable
@@ -670,14 +711,15 @@ int32_t Z_ReceiveSimpleDesc(int32_t res, const class SBuffer &buf) {
     }
 
     Response_P(PSTR("{\"" D_JSON_ZIGBEE_STATE "\":{"
-                    "\"Status\":%d,\"Endpoint\":\"0x%02X\""
+                    "\"Status\":%d,\"Device\":\"0x%04X\",\"Endpoint\":\"0x%02X\""
                     ",\"ProfileId\":\"0x%04X\",\"DeviceId\":\"0x%04X\",\"DeviceVersion\":%d"
                     ",\"InClusters\":["),
-                    ZIGBEE_STATUS_SIMPLE_DESC, endpoint,
+                    ZIGBEE_STATUS_SIMPLE_DESC, nwkAddr, endpoint,
                     profileId, deviceId, deviceVersion);
     for (uint32_t i = 0; i < numInCluster; i++) {
       if (i > 0) { ResponseAppend_P(PSTR(",")); }
       ResponseAppend_P(PSTR("\"0x%04X\""), buf.get16(numInIndex + i*2));
+      if (buf.get16(numInIndex + i*2) == 0xEF00) { is_tuya_protocol = true; }   // tuya protocol
     }
     ResponseAppend_P(PSTR("],\"OutClusters\":["));
     for (uint32_t i = 0; i < numOutCluster; i++) {
@@ -687,6 +729,14 @@ int32_t Z_ReceiveSimpleDesc(int32_t res, const class SBuffer &buf) {
     ResponseAppend_P(PSTR("]}}"));
     MqttPublishPrefixTopic_P(RESULT_OR_TELE, PSTR(D_JSON_ZIGBEEZCL_RECEIVED));
     XdrvRulesProcess();
+  }
+
+  // If tuya protocol, change the model information
+  if (is_tuya_protocol) {
+    Z_Device & device = zigbee_devices.getShortAddr(nwkAddr);
+    device.addEndpoint(endpoint);
+    device.data.get<Z_Data_Mode>(endpoint).setConfig(ZM_Tuya);
+    zigbee_devices.dirty();
   }
 
   return -1;
@@ -948,80 +998,7 @@ int32_t Z_UnbindRsp(int32_t res, const class SBuffer &buf) {
 // Handle MgMt Bind Rsp incoming message
 //
 int32_t Z_MgmtBindRsp(int32_t res, const class SBuffer &buf) {
-#ifdef USE_ZIGBEE_ZNP
-  uint16_t    shortaddr   = buf.get16(2);
-  uint8_t     status      = buf.get8(4);
-  uint8_t     bind_total  = buf.get8(5);
-  uint8_t     bind_start  = buf.get8(6);
-  uint8_t     bind_len    = buf.get8(7);
-  const size_t prefix_len = 8;
-#endif // USE_ZIGBEE_ZNP
-#ifdef USE_ZIGBEE_EZSP
-  uint16_t    shortaddr   = buf.get16(buf.len()-2);
-  uint8_t     status      = buf.get8(0);
-  uint8_t     bind_total  = buf.get8(1);
-  uint8_t     bind_start  = buf.get8(2);
-  uint8_t     bind_len    = buf.get8(3);
-  const size_t prefix_len = 4;
-#endif // USE_ZIGBEE_EZSP
-
-  // device is reachable
-  zigbee_devices.deviceWasReached(shortaddr);
-
-  const char * friendlyName = zigbee_devices.getFriendlyName(shortaddr);
-
-  Response_P(PSTR("{\"" D_JSON_ZIGBEE_BIND_STATE "\":{\"" D_JSON_ZIGBEE_DEVICE "\":\"0x%04X\""), shortaddr);
-  if (friendlyName) {
-    ResponseAppend_P(PSTR(",\"" D_JSON_ZIGBEE_NAME "\":\"%s\""), friendlyName);
-  }
-  ResponseAppend_P(PSTR(",\"" D_JSON_ZIGBEE_STATUS "\":%d"
-                        ",\"" D_JSON_ZIGBEE_STATUS_MSG "\":\"%s\""
-                        ",\"BindingsTotal\":%d"
-                        ",\"BindingsStart\":%d"
-                        ",\"Bindings\":["
-                        ), status, getZigbeeStatusMessage(status).c_str(), bind_total, bind_start + 1);
-
-  uint32_t idx = prefix_len;
-  for (uint32_t i = 0; i < bind_len; i++) {
-    if (idx + 14 > buf.len()) { break; }   // overflow, frame size is between 14 and 21
-
-    //uint64_t    srcaddr   = buf.get16(idx);     // unused
-    uint8_t     srcep     = buf.get8(idx + 8);
-    uint16_t    cluster   = buf.get16(idx + 9);
-    uint8_t     addrmode  = buf.get8(idx + 11);
-    uint16_t    group     = 0x0000;
-    uint64_t    dstaddr   = 0;
-    uint8_t     dstep     = 0x00;
-    if (Z_Addr_Group == addrmode) {               // Group address mode
-      group = buf.get16(idx + 12);
-      idx += 14;
-    } else if (Z_Addr_IEEEAddress == addrmode) {  // IEEE address mode
-      dstaddr = buf.get64(idx + 12);
-      dstep = buf.get8(idx + 20);
-      idx += 21;
-    } else {
-      //AddLog_P(LOG_LEVEL_INFO, PSTR("ZNP_MgmtBindRsp unknwon address mode %d"), addrmode);
-      break;                                      // abort for any other value since we don't know the length of the field
-    }
-
-    if (i > 0) {
-      ResponseAppend_P(PSTR(","));
-    }
-    ResponseAppend_P(PSTR("{\"Cluster\":\"0x%04X\",\"Endpoint\":%d,"), cluster, srcep);
-    if (Z_Addr_Group == addrmode) {               // Group address mode
-      ResponseAppend_P(PSTR("\"ToGroup\":%d}"), group);
-    } else if (Z_Addr_IEEEAddress == addrmode) {  // IEEE address mode
-      char hex[20];
-      Uint64toHex(dstaddr, hex, 64);
-      ResponseAppend_P(PSTR("\"ToDevice\":\"0x%s\",\"ToEndpoint\":%d}"), hex, dstep);
-    }
-  }
-
-  ResponseAppend_P(PSTR("]}}"));
-
-  MqttPublishPrefixTopicRulesProcess_P(RESULT_OR_TELE, PSTR(D_JSON_ZIGBEE_BIND_STATE));
-
-  return -1;
+  return Z_Mgmt_Lqi_Bind_Rsp(res, buf, false);
 }
 
 // Return false, true or null (if unknown)
@@ -1056,23 +1033,25 @@ const char * Z_DeviceType(uint32_t value) {
 }
 
 //
-// Handle MgMt Bind Rsp incoming message
+// Combined code for MgmtLqiRsp and MgmtBindRsp
 //
-int32_t Z_MgmtLqiRsp(int32_t res, const class SBuffer &buf) {
+// If the response has a follow-up, send more requests automatically
+//
+int32_t Z_Mgmt_Lqi_Bind_Rsp(int32_t res, const class SBuffer &buf, boolean lqi) {
 #ifdef USE_ZIGBEE_ZNP
   uint16_t    shortaddr   = buf.get16(2);
   uint8_t     status      = buf.get8(4);
-  uint8_t     lqi_total   = buf.get8(5);
-  uint8_t     lqi_start   = buf.get8(6);
-  uint8_t     lqi_len     = buf.get8(7);
+  uint8_t     total       = buf.get8(5);
+  uint8_t     start       = buf.get8(6);
+  uint8_t     len         = buf.get8(7);
   const size_t prefix_len = 8;
 #endif // USE_ZIGBEE_ZNP
 #ifdef USE_ZIGBEE_EZSP
   uint16_t    shortaddr   = buf.get16(buf.len()-2);
   uint8_t     status      = buf.get8(0);
-  uint8_t     lqi_total   = buf.get8(1);
-  uint8_t     lqi_start   = buf.get8(2);
-  uint8_t     lqi_len     = buf.get8(3);
+  uint8_t     total       = buf.get8(1);
+  uint8_t     start       = buf.get8(2);
+  uint8_t     len         = buf.get8(3);
   const size_t prefix_len = 4;
 #endif // USE_ZIGBEE_EZSP
 
@@ -1081,60 +1060,121 @@ int32_t Z_MgmtLqiRsp(int32_t res, const class SBuffer &buf) {
 
   const char * friendlyName = zigbee_devices.getFriendlyName(shortaddr);
 
-  Response_P(PSTR("{\"" D_JSON_ZIGBEE_MAP "\":{\"" D_JSON_ZIGBEE_DEVICE "\":\"0x%04X\""), shortaddr);
+  Response_P(PSTR("{\"%s\":{\"" D_JSON_ZIGBEE_DEVICE "\":\"0x%04X\""),
+                  lqi ? PSTR(D_JSON_ZIGBEE_MAP) : PSTR(D_JSON_ZIGBEE_BIND_STATE), shortaddr);
   if (friendlyName) {
     ResponseAppend_P(PSTR(",\"" D_JSON_ZIGBEE_NAME "\":\"%s\""), friendlyName);
   }
   ResponseAppend_P(PSTR(",\"" D_JSON_ZIGBEE_STATUS "\":%d"
                         ",\"" D_JSON_ZIGBEE_STATUS_MSG "\":\"%s\""
-                        ",\"MapTotal\":%d"
-                        ",\"MapStart\":%d"
-                        ",\"Map\":["
-                        ), status, getZigbeeStatusMessage(status).c_str(), lqi_total, lqi_start + 1);
+                        ",\"Total\":%d"
+                        ",\"Start\":%d"
+                        ",\"%s\":["
+                        ), status, getZigbeeStatusMessage(status).c_str(), total, start + 1,
+                           lqi ? PSTR("Map") : PSTR("Bindings"));
 
-  uint32_t idx = prefix_len;
-  for (uint32_t i = 0; i < lqi_len; i++) {
-    if (idx + 22 > buf.len()) { break; }   // size 22 for EZSP
+  if (lqi) {
+    uint32_t idx = prefix_len;
+    for (uint32_t i = 0; i < len; i++) {
+      if (idx + 22 > buf.len()) { break; }   // size 22 for EZSP
 
-    //uint64_t    extpanid   = buf.get16(idx);     // unused
-    // uint64_t    m_longaddr  = buf.get64(idx + 8);
-    uint16_t    m_shortaddr = buf.get16(idx + 16);
-    uint8_t     m_dev_type  = buf.get8(idx + 18);
-    uint8_t     m_permitjoin = buf.get8(idx + 19);
-    uint8_t     m_depth     = buf.get8(idx + 20);
-    uint8_t     m_lqi       = buf.get8(idx + 21);
-    idx += 22;
+      //uint64_t    extpanid   = buf.get16(idx);     // unused
+      // uint64_t    m_longaddr  = buf.get64(idx + 8);
+      uint16_t    m_shortaddr = buf.get16(idx + 16);
+      uint8_t     m_dev_type  = buf.get8(idx + 18);
+      uint8_t     m_permitjoin = buf.get8(idx + 19);
+      uint8_t     m_depth     = buf.get8(idx + 20);
+      uint8_t     m_lqi       = buf.get8(idx + 21);
+      idx += 22;
 
-    if (i > 0) {
-      ResponseAppend_P(PSTR(","));
+      if (i > 0) {
+        ResponseAppend_P(PSTR(","));
+      }
+      ResponseAppend_P(PSTR("{\"Device\":\"0x%04X\","), m_shortaddr);
+
+      const char * friendlyName = zigbee_devices.getFriendlyName(m_shortaddr);
+      if (friendlyName) {
+        ResponseAppend_P(PSTR("\"Name\":\"%s\","), friendlyName);
+      }
+      ResponseAppend_P(PSTR("\"DeviceType\":\"%s\","
+                            "\"RxOnWhenIdle\":%s,"
+                            "\"Relationship\":\"%s\","
+                            "\"PermitJoin\":%s,"
+                            "\"Depth\":%d,"
+                            "\"LinkQuality\":%d"
+                            "}"
+                            ),
+                            Z_DeviceType(m_dev_type & 0x03),
+                            TrueFalseNull((m_dev_type & 0x0C) >> 2),
+                            Z_DeviceRelationship((m_dev_type & 0x70) >> 4),
+                            TrueFalseNull(m_permitjoin & 0x02),
+                            m_depth,
+                            m_lqi);
     }
-    ResponseAppend_P(PSTR("{\"Device\":\"0x%04X\","), m_shortaddr);
 
-    const char * friendlyName = zigbee_devices.getFriendlyName(m_shortaddr);
-    if (friendlyName) {
-      ResponseAppend_P(PSTR("\"Name\":\"%s\","), friendlyName);
+    ResponseAppend_P(PSTR("]}}"));
+  } else {  // Bind
+
+    uint32_t idx = prefix_len;
+    for (uint32_t i = 0; i < len; i++) {
+      if (idx + 14 > buf.len()) { break; }   // overflow, frame size is between 14 and 21
+
+      //uint64_t    srcaddr   = buf.get16(idx);     // unused
+      uint8_t     srcep     = buf.get8(idx + 8);
+      uint16_t    cluster   = buf.get16(idx + 9);
+      uint8_t     addrmode  = buf.get8(idx + 11);
+      uint16_t    group     = 0x0000;
+      uint64_t    dstaddr   = 0;
+      uint8_t     dstep     = 0x00;
+      if (Z_Addr_Group == addrmode) {               // Group address mode
+        group = buf.get16(idx + 12);
+        idx += 14;
+      } else if (Z_Addr_IEEEAddress == addrmode) {  // IEEE address mode
+        dstaddr = buf.get64(idx + 12);
+        dstep = buf.get8(idx + 20);
+        idx += 21;
+      } else {
+        //AddLog_P(LOG_LEVEL_INFO, PSTR("ZNP_MgmtBindRsp unknwon address mode %d"), addrmode);
+        break;                                      // abort for any other value since we don't know the length of the field
+      }
+
+      if (i > 0) {
+        ResponseAppend_P(PSTR(","));
+      }
+      ResponseAppend_P(PSTR("{\"Cluster\":\"0x%04X\",\"Endpoint\":%d,"), cluster, srcep);
+      if (Z_Addr_Group == addrmode) {               // Group address mode
+        ResponseAppend_P(PSTR("\"ToGroup\":%d}"), group);
+      } else if (Z_Addr_IEEEAddress == addrmode) {  // IEEE address mode
+        char hex[20];
+        Uint64toHex(dstaddr, hex, 64);
+        ResponseAppend_P(PSTR("\"ToDevice\":\"0x%s\",\"ToEndpoint\":%d}"), hex, dstep);
+      }
     }
-    ResponseAppend_P(PSTR("\"DeviceType\":\"%s\","
-                          "\"RxOnWhenIdle\":%s,"
-                          "\"Relationship\":\"%s\","
-                          "\"PermitJoin\":%s,"
-                          "\"Depth\":%d,"
-                          "\"LinkQuality\":%d"
-                          "}"
-                          ),
-                          Z_DeviceType(m_dev_type & 0x03),
-                          TrueFalseNull((m_dev_type & 0x0C) >> 2),
-                          Z_DeviceRelationship((m_dev_type & 0x70) >> 4),
-                          TrueFalseNull(m_permitjoin & 0x02),
-                          m_depth,
-                          m_lqi);
+
+    ResponseAppend_P(PSTR("]}}"));
   }
-
-  ResponseAppend_P(PSTR("]}}"));
 
   MqttPublishPrefixTopicRulesProcess_P(RESULT_OR_TELE, PSTR(D_JSON_ZIGBEE_MAP));
 
+  // Check if there are more values waiting, if so re-send a new request to get other values
+  if (start + len < total) {
+    // there are more values to read
+#ifdef USE_ZIGBEE_ZNP
+      Z_Send_State_or_Map(shortaddr, start + len, lqi ? ZDO_MGMT_LQI_REQ : ZDO_MGMT_BIND_REQ);
+#endif // USE_ZIGBEE_ZNP
+#ifdef USE_ZIGBEE_EZSP
+      Z_Send_State_or_Map(shortaddr, start + len, lqi ? ZDO_Mgmt_Lqi_req : ZDO_Mgmt_Bind_req);
+#endif // USE_ZIGBEE_EZSP
+  }
+
   return -1;
+}
+
+//
+// Handle MgMt Bind Rsp incoming message
+//
+int32_t Z_MgmtLqiRsp(int32_t res, const class SBuffer &buf) {
+  return Z_Mgmt_Lqi_Bind_Rsp(res, buf, true);
 }
 
 #ifdef USE_ZIGBEE_EZSP
@@ -1572,7 +1612,7 @@ void Z_IncomingMessage(class ZCLFrame &zcl_received) {
  * Send ZDO Message
 \*********************************************************************************************/
 
-void EZ_SendZDO(uint16_t shortaddr, uint16_t cmd, const unsigned char *payload, size_t payload_len) {
+void EZ_SendZDO(uint16_t shortaddr, uint16_t cmd, const unsigned char *payload, size_t payload_len, bool retry) {
   SBuffer buf(payload_len + 22);
   uint8_t seq = zigbee_devices.getNextSeqNumber(0x0000);
 
@@ -1587,7 +1627,11 @@ void EZ_SendZDO(uint16_t shortaddr, uint16_t cmd, const unsigned char *payload, 
     buf.add16(cmd);                     // ZDO cmd in cluster
     buf.add8(0);                        // srcEp
     buf.add8(0);                        // dstEp
-    buf.add16(EMBER_APS_OPTION_ENABLE_ROUTE_DISCOVERY | EMBER_APS_OPTION_RETRY);      // APS frame
+    if (retry) {
+      buf.add16(EMBER_APS_OPTION_ENABLE_ROUTE_DISCOVERY | EMBER_APS_OPTION_RETRY);      // APS frame
+    } else {
+      buf.add16(EMBER_APS_OPTION_ENABLE_ROUTE_DISCOVERY);      // APS frame
+    }
     buf.add16(0x0000);                  // groupId
     buf.add8(seq);
     // end of ApsFrame
@@ -1676,8 +1720,6 @@ int32_t EZ_IncomingMessage(int32_t res, const class SBuffer &buf) {
       case ZDO_Parent_annce_rsp:
         return EZ_ParentAnnceRsp(res, zdo_buf, true);
       default:
-        // TODO move later to LOG_LEVEL_DEBUG
-        AddLog_P(LOG_LEVEL_INFO, PSTR("ZIG: Internal ZDO message 0x%04X sent from 0x%04X %s"), clusterid, srcaddr, wasbroadcast ? PSTR("(broadcast)") : "");
         break;
     }
   } else {
@@ -2004,7 +2046,7 @@ void ZCLFrame::autoResponder(const uint16_t *attr_list_ids, size_t attr_len) {
         break;
     }
     if (!attr.isNone()) {
-      Z_parseAttributeKey(attr);
+      Z_parseAttributeKey(attr, _cluster_id);
       attr_list.addAttribute(_cluster_id, attr_id) = attr;
     }
   }
