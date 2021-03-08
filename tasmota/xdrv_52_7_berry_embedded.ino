@@ -44,7 +44,8 @@ const char berry_prog[] =
     // Map all native functions to methods
     // Again, this will be eventually pre-compiled
     "var getfreeheap, publish, cmd, getoption, millis, timereached, yield "
-    "var respcmnd, respcmndstr, respcmnd_done, respcmnd_error, respcmnd_failed "
+    "var respcmnd, respcmndstr, respcmnd_done, respcmnd_error, respcmnd_failed, resolvecmnd "
+    "var getlight "
     "def init_ntv() "
       "import tasmota_ntv "
       "self.getfreeheap = tasmota_ntv.getfreeheap "
@@ -61,6 +62,9 @@ const char berry_prog[] =
       "self.respcmnd_done = tasmota_ntv.respcmnd_done "
       "self.respcmnd_error = tasmota_ntv.respcmnd_error "
       "self.respcmnd_failed = tasmota_ntv.respcmnd_failed "
+      "self.resolvecmnd = tasmota_ntv.resolvecmnd "
+
+      "self.getlight = tasmota_ntv.getlight "
     "end "
 
     "def init() "
@@ -207,8 +211,11 @@ const char berry_prog[] =
       "var payload_json = json.load(payload) "
       "var cmd_found = self.findkeyi(self._cmd, cmd) "
       "if cmd_found != nil "
-        "return self._cmd[cmd_found](cmd_found, idx, payload, payload_json) "
+        "self.resolvecmnd(cmd_found) "  // set the command name in XdrvMailbox.command
+        "self._cmd[cmd_found](cmd_found, idx, payload, payload_json) "
+        "return true "
       "end "
+      "return false "
     "end "
 
     // Force gc and return allocated memory
@@ -259,23 +266,6 @@ const char berry_prog[] =
   // "try compile('/autoexec.be','file')() except .. log('BRY: no /autoexec.bat file') end "
 
   // Wire
-  "wire.validread = def(addr, reg, size) "
-    "var ret = nil "
-    "for i:0..2 "
-      "wire.begintransmission(addr) "
-      "wire.write(reg) "
-      "if wire.endtransmission(false) == 0 "
-        "wire.requestfrom(addr, size) "
-        "if wire.available() == size "
-          "for j:0..size-1 "
-            "ret = ((ret != nil ? ret : 0) << 8) + wire.read() "
-          "end "
-          "return ret "
-        "end "
-      "end "
-    "end "
-    "wire.endtransmission() "
-  "end "
   ;
 
 #endif  // USE_BERRY
