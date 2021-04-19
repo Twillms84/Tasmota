@@ -160,6 +160,7 @@ enum UserSelectablePins {
   GPIO_ZEROCROSS,
 #ifdef ESP32
   GPIO_HALLEFFECT,
+  GPIO_EPD_DATA,                       // Base connection EPD driver
 #endif
   GPIO_SENSOR_END };
 
@@ -168,14 +169,14 @@ enum ProgramSelectablePins {
   GPIO_USER,           // User configurable needs to be 2047
   GPIO_MAX };
 
-#define MAX_OPTIONS_A  2                   // Increase if more bits are used from GpioOptionABits
+#define MAX_OPTIONS_A  3                   // Increase if more bits are used from GpioOptionABits
 
 typedef union {                            // Restricted by MISRA-C Rule 18.4 but so useful...
   uint32_t data;                           // Allow bit manipulation using SetOption
   struct {                                 // GPIO Option_A1 .. Option_A32
     uint32_t pwm1_input : 1;               // bit 0 (v9.2.0.1)   - Option_A1 - (Light) Change PWM1 to input on power off and no fade running (1)
     uint32_t dummy_energy : 1;             // bit 1 (v9.3.1.2)   - Option_A2 - (Energy) Enable dummy values
-    uint32_t spare02 : 1;                  // bit 2
+    uint32_t udisplay_driver : 1;          // bit 2 (v9.3.1.2)   - Option_A3 - (Display) Universal display driver
     uint32_t spare03 : 1;                  // bit 3
     uint32_t spare04 : 1;                  // bit 4
     uint32_t spare05 : 1;                  // bit 5
@@ -341,6 +342,7 @@ const char kSensorNames[] PROGMEM =
   D_SENSOR_ZEROCROSS "|"
 #ifdef ESP32
   D_SENSOR_HALLEFFECT "|"
+  D_SENSOR_EPD_DATA "|"
 #endif
   ;
 
@@ -405,11 +407,11 @@ const uint16_t kGpioNiceList[] PROGMEM = {
 #endif
 
 #ifdef USE_SPI
-  AGPIO(GPIO_SPI_MISO),                 // SPI MISO
-  AGPIO(GPIO_SPI_MOSI),                 // SPI MOSI
-  AGPIO(GPIO_SPI_CLK),                  // SPI Clk
-  AGPIO(GPIO_SPI_CS),                   // SPI Chip Select
-  AGPIO(GPIO_SPI_DC),                   // SPI Data Direction
+  AGPIO(GPIO_SPI_MISO) + MAX_SPI,       // SPI MISO
+  AGPIO(GPIO_SPI_MOSI) + MAX_SPI,       // SPI MOSI
+  AGPIO(GPIO_SPI_CLK) + MAX_SPI,        // SPI Clk
+  AGPIO(GPIO_SPI_CS) + MAX_SPI,         // SPI Chip Select
+  AGPIO(GPIO_SPI_DC) + MAX_SPI,         // SPI Data Direction
 #ifdef USE_NRF24
   AGPIO(GPIO_NRF24_CS),
   AGPIO(GPIO_NRF24_DC),
@@ -429,7 +431,7 @@ const uint16_t kGpioNiceList[] PROGMEM = {
   AGPIO(GPIO_SSPI_CS),        // Software SPI Chip Select
   AGPIO(GPIO_SSPI_DC),        // Software SPI Data or Command
 
-#ifdef USE_DISPLAY
+#if defined(USE_DISPLAY) || defined(USE_LVGL)
 #ifdef USE_DISPLAY_ILI9341
   AGPIO(GPIO_ILI9341_CS),
   AGPIO(GPIO_ILI9341_DC),
@@ -470,6 +472,9 @@ const uint16_t kGpioNiceList[] PROGMEM = {
 #endif  // USE_DISPLAY_TM1637
   AGPIO(GPIO_BACKLIGHT),      // Display backlight control
   AGPIO(GPIO_OLED_RESET),     // OLED Display Reset
+#ifdef ESP32
+  AGPIO(GPIO_EPD_DATA),       // Base connection EPD driver
+#endif
 #endif  // USE_DISPLAY
 
 #ifdef USE_MAX31865

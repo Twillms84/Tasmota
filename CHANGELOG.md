@@ -3,7 +3,30 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased] - Development
 
-## [9.3.1.2]
+## [9.3.1.4]
+### Added
+- Command ``TuyaTempSetRes 0..3`` to control Tuya Temperature Set Resolution (#11781)
+- ESP32 support for LVGL 7.11 with Berry binding by Stefan Hadinger (#11789)
+
+## [9.3.1.3] 20210419
+### Added
+- Optional GUI file editor enabled with define ``GUI_EDIT_FILE`` by barbudor (#11668)
+- Initial support for universal display driver UDisplay by Gerhard Mutz. Enable by selecting any GPIO as ``Option A3`` (#11665)
+
+### Breaking Changed
+- ESP32 partition layout changed to accomodate more file space on most and more code space on core2 and odroid-go (#11746)
+
+### Changed
+- In tasmota-sensors.bin enabled support for VL53L0X and disabled TSL2561 (#11711)
+- Add HLW8012/BL0937 average pulse calculation by Alex Lovett (#11722)
+- Redesigned initial GUI wifi configuration by Adrian Scillato (#11693)
+- Redesigned GUI by moving non-configuration buttons from ``Configuration`` to new submenu ``Consoles``
+
+### Fixed
+- Telegram chat id incorrect size (#11660)
+- KNX energy yesterday (#11718)
+
+## [9.3.1.2] 20210413
 ### Added
 - Commands ``MqttKeepAlive 1..100`` to set Mqtt Keep Alive timer (default 30) and ``MqttTimeout 1..100`` to set Mqtt Socket Timeout (default 4) (#5341)
 - Commands ``DisplayType`` to select sub-modules where implemented and ``DisplayInvert`` to select inverted display where implemented
@@ -18,6 +41,7 @@ All notable changes to this project will be documented in this file.
 - Berry add ``light`` module
 - Support for dummy energy monitor using user values set by commands ``VoltageSet``, ``CurrentSet``, ``PowerSet`` and ``FrequencySet``. Enable by selecting any GPIO as ``Option A2`` (#10640)
 - Command ``Backlog0`` to allow execution of following commands without delay
+- Tasmota discovery as alternative to Home Assistant discovery using define ``USE_TASMOTA_DISCOVERY``
 
 ### Changed
 - PubSubClient library from EspEasy v2.7.12 to Tasmota v2.8.12
@@ -26,12 +50,15 @@ All notable changes to this project will be documented in this file.
 - Limit number of relay/button columns in GUI to 8 (#11546)
 - ADC range result from int to float using command ``FreqRes`` for decimal resolution selection (#11545)
 - Teleinfo, if raw mode selected also return telemety values in SENSOR data
+- Removed overtemp detection on external energy monitoring devices (#11628)
 
 ### Fixed
 - HC-SR04 on ESP32 release serial interface if not used (#11507)
 - Teleinfo, if raw mode selected also always update total energy calculations
+- Alexa discovery for ZBBridge (#11576)
+- Alexa discovery in hue emulation (#11415)
 
-## [9.3.1.1]
+## [9.3.1.1] 20210320
 ### Added
 - Support for CSE7761 energy monitor as used in ESP32 based Sonoff Dual R3 Pow (#10793)
 - Command ``Sensor80 1 <0..7>`` to control MFRC522 RFID antenna gain from 18dB (0) to 48dB (7) (#11073)
@@ -73,7 +100,7 @@ All notable changes to this project will be documented in this file.
 ## [9.3.1] 20210223
 - Release Kenneth
 
-## [9.3.0.1]
+## [9.3.0.1] 20210223
 ### Added
 - Animate PWM dimmer brightness LEDs during transitions and with variable brightness (#11076)
 - Commands ``StateRetain`` and ``InfoRetain`` (#11084)

@@ -78,7 +78,7 @@
 #include <SPI.h>
 #ifdef USE_SDCARD
 #include <SD.h>
-#include <SDFAT.h>
+#include <SdFat.h>
 #endif  // USE_SDCARD
 #endif  // ESP8266
 #ifdef ESP32
@@ -97,6 +97,8 @@
 /*********************************************************************************************\
  * Global variables
 \*********************************************************************************************/
+
+const uint32_t VERSION_MARKER[] PROGMEM = { 0x5AA55AA5, 0xFFFFFFFF, 0xA55AA55A };
 
 WiFiUDP PortUdp;                            // UDP Syslog and Alexa
 
@@ -364,6 +366,8 @@ void setup(void) {
   AddLog(LOG_LEVEL_INFO, PSTR(D_WARNING_MINIMAL_VERSION));
 #endif  // FIRMWARE_MINIMAL
 
+  memcpy_P(TasmotaGlobal.mqtt_data, VERSION_MARKER, 1);  // Dummy for compiler saving VERSION_MARKER
+
 #ifdef USE_ARDUINO_OTA
   ArduinoOTAInit();
 #endif  // USE_ARDUINO_OTA
@@ -411,7 +415,7 @@ void BacklogLoop(void) {
 }
 
 void SleepDelay(uint32_t mseconds) {
-  if (mseconds) {
+  if (!TasmotaGlobal.backlog_nodelay && mseconds) {
     uint32_t wait = millis() + mseconds;
     while (!TimeReached(wait) && !Serial.available()) {  // We need to service serial buffer ASAP as otherwise we get uart buffer overrun
       delay(1);
