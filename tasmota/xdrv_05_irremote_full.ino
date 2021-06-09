@@ -307,7 +307,7 @@ void IrReceiveCheck(void)
             prev_number = true;
           }
           ir_high = !ir_high;
-          if (strlen(TasmotaGlobal.mqtt_data) > sizeof(TasmotaGlobal.mqtt_data) - 40) { break; }  // Quit if char string becomes too long
+          if (ResponseLength() + 40 > ResponseSize()) { break; }  // Quit if char string becomes too long
         }
         uint16_t extended_length = getCorrectedRawLength(&results);
         ResponseAppend_P(PSTR("\",\"" D_JSON_IR_RAWDATA "Info\":[%d,%d,%d]"), extended_length, i -1, results.overflow);
@@ -381,7 +381,7 @@ uint32_t IrRemoteCmndIrHvacJson(void)
 {
   stdAc::state_t state;
 
-  //AddLog_P(LOG_LEVEL_DEBUG, PSTR("IRHVAC: Received %s"), XdrvMailbox.data);
+  //AddLog(LOG_LEVEL_DEBUG, PSTR("IRHVAC: Received %s"), XdrvMailbox.data);
   JsonParser parser(XdrvMailbox.data);
   JsonParserObject root = parser.getRootObject();
   if (!root) { return IE_INVALID_JSON; }

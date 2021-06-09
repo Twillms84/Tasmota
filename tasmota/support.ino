@@ -515,6 +515,14 @@ char* UpperCase_P(char* dest, const char* source)
   return dest;
 }
 
+bool StrCaseStr_P(const char* source, const char* search) {
+  char case_source[strlen_P(source) +1];
+  UpperCase_P(case_source, source);
+  char case_search[strlen_P(search) +1];
+  UpperCase_P(case_search, search);
+  return (strstr(case_source, case_search) != nullptr);
+}
+
 char* Trim(char* p)
 {
   if (*p != '\0') {
@@ -525,6 +533,24 @@ char* Trim(char* p)
     *q = '\0';
   }
   return p;
+}
+
+String HexToString(uint8_t* data, uint32_t length) {
+  if (!data || !length) { return ""; }
+
+  uint32_t len = (length < 16) ? length : 16;
+  char hex_data[32];
+  ToHex_P((const unsigned char*)data, len, hex_data, sizeof(hex_data));
+  String result = hex_data;
+  result += F(" [");
+  for (uint32_t i = 0; i < len; i++) {
+    result += (isprint(data[i])) ? (char)data[i] : ' ';
+  }
+  result += F("]");
+  if (length > len) {
+    result += F(" ...");
+  }
+  return result;
 }
 
 String UrlEncode(const String& text) {
@@ -558,25 +584,6 @@ String UrlEncode(const String& text) {
 	}
 	return encoded;
 }
-
-/*
-char* RemoveAllSpaces(char* p)
-{
-  // remove any white space from the base64
-  char *cursor = p;
-  uint32_t offset = 0;
-  while (1) {
-    *cursor = *(cursor + offset);
-    if ((' ' == *cursor) || ('\t' == *cursor) || ('\n' == *cursor)) {   // if space found, remove this char until end of string
-      offset++;
-    } else {
-      if (0 == *cursor) { break; }
-      cursor++;
-    }
-  }
-  return p;
-}
-*/
 
 char* NoAlNumToUnderscore(char* dest, const char* source)
 {
@@ -978,6 +985,7 @@ String GetSerialConfig(void) {
 }
 
 uint32_t GetSerialBaudrate(void) {
+  // Serial.printf(">> GetSerialBaudrate baudrate = %d\n", Serial.baudRate());
   return (Serial.baudRate() / 300) * 300;  // Fix ESP32 strange results like 115201
 }
 
@@ -1011,7 +1019,9 @@ void SetSerialBaudrate(uint32_t baudrate) {
   TasmotaGlobal.baudrate = baudrate;
   Settings.baudrate = TasmotaGlobal.baudrate / 300;
   if (GetSerialBaudrate() != TasmotaGlobal.baudrate) {
+#if defined(CONFIG_IDF_TARGET_ESP32C3) && !CONFIG_IDF_TARGET_ESP32C3    // crashes on ESP32C3 - TODO
     SetSerialBegin();
+#endif
   }
 }
 
@@ -1162,43 +1172,114 @@ char* ResponseGetTime(uint32_t format, char* time_str)
   return time_str;
 }
 
+uint32_t ResponseSize(void) {
+#ifdef MQTT_DATA_STRING
+  return MESSZ;
+#else
+  return sizeof(TasmotaGlobal.mqtt_data);
+#endif
+}
+
+uint32_t ResponseLength(void) {
+#ifdef MQTT_DATA_STRING
+  return TasmotaGlobal.mqtt_data.length();
+#else
+  return strlen(TasmotaGlobal.mqtt_data);
+#endif
+}
+
 void ResponseClear(void) {
+  // Reset string length to zero
+#ifdef MQTT_DATA_STRING
+  TasmotaGlobal.mqtt_data = "";
+#else
   TasmotaGlobal.mqtt_data[0] = '\0';
+#endif
+}
+
+void ResponseJsonStart(void) {
+  // Insert a JSON start bracket {
+#ifdef MQTT_DATA_STRING
+  TasmotaGlobal.mqtt_data.setCharAt(0,'{');
+#else
+  TasmotaGlobal.mqtt_data[0] = '{';
+#endif
 }
 
 int Response_P(const char* format, ...)        // Content send snprintf_P char data
 {
   // This uses char strings. Be aware of sending %% if % is needed
+#ifdef MQTT_DATA_STRING
+  va_list arg;
+  va_start(arg, format);
+  char* mqtt_data = ext_vsnprintf_malloc_P(format, arg);
+  va_end(arg);
+  if (mqtt_data != nullptr) {
+    TasmotaGlobal.mqtt_data = mqtt_data;
+    free(mqtt_data);
+  } else {
+    TasmotaGlobal.mqtt_data = "";
+  }
+  return TasmotaGlobal.mqtt_data.length();
+#else
   va_list args;
   va_start(args, format);
-  int len = ext_vsnprintf_P(TasmotaGlobal.mqtt_data, sizeof(TasmotaGlobal.mqtt_data), format, args);
+  int len = ext_vsnprintf_P(TasmotaGlobal.mqtt_data, ResponseSize(), format, args);
   va_end(args);
   return len;
+#endif
 }
 
 int ResponseTime_P(const char* format, ...)    // Content send snprintf_P char data
 {
   // This uses char strings. Be aware of sending %% if % is needed
+#ifdef MQTT_DATA_STRING
+  char timestr[100];
+  TasmotaGlobal.mqtt_data = ResponseGetTime(Settings.flag2.time_format, timestr);
+
+  va_list arg;
+  va_start(arg, format);
+  char* mqtt_data = ext_vsnprintf_malloc_P(format, arg);
+  va_end(arg);
+  if (mqtt_data != nullptr) {
+    TasmotaGlobal.mqtt_data += mqtt_data;
+    free(mqtt_data);
+  }
+  return TasmotaGlobal.mqtt_data.length();
+#else
   va_list args;
   va_start(args, format);
 
   ResponseGetTime(Settings.flag2.time_format, TasmotaGlobal.mqtt_data);
 
-  int mlen = strlen(TasmotaGlobal.mqtt_data);
-  int len = ext_vsnprintf_P(TasmotaGlobal.mqtt_data + mlen, sizeof(TasmotaGlobal.mqtt_data) - mlen, format, args);
+  int mlen = ResponseLength();
+  int len = ext_vsnprintf_P(TasmotaGlobal.mqtt_data + mlen, ResponseSize() - mlen, format, args);
   va_end(args);
   return len + mlen;
+#endif
 }
 
 int ResponseAppend_P(const char* format, ...)  // Content send snprintf_P char data
 {
   // This uses char strings. Be aware of sending %% if % is needed
+#ifdef MQTT_DATA_STRING
+  va_list arg;
+  va_start(arg, format);
+  char* mqtt_data = ext_vsnprintf_malloc_P(format, arg);
+  va_end(arg);
+  if (mqtt_data != nullptr) {
+    TasmotaGlobal.mqtt_data += mqtt_data;
+    free(mqtt_data);
+  }
+  return TasmotaGlobal.mqtt_data.length();
+#else
   va_list args;
   va_start(args, format);
-  int mlen = strlen(TasmotaGlobal.mqtt_data);
-  int len = ext_vsnprintf_P(TasmotaGlobal.mqtt_data + mlen, sizeof(TasmotaGlobal.mqtt_data) - mlen, format, args);
+  int mlen = ResponseLength();
+  int len = ext_vsnprintf_P(TasmotaGlobal.mqtt_data + mlen, ResponseSize() - mlen, format, args);
   va_end(args);
   return len + mlen;
+#endif
 }
 
 int ResponseAppendTimeFormat(uint32_t format)
@@ -1229,6 +1310,14 @@ int ResponseJsonEnd(void)
 int ResponseJsonEndEnd(void)
 {
   return ResponseAppend_P(PSTR("}}"));
+}
+
+bool ResponseContains_P(const char* needle) {
+#ifdef MQTT_DATA_STRING
+  return (strstr_P(TasmotaGlobal.mqtt_data.c_str(), needle) != nullptr);
+#else
+  return (strstr_P(TasmotaGlobal.mqtt_data, needle) != nullptr);
+#endif
 }
 
 /*********************************************************************************************\
@@ -1395,6 +1484,7 @@ bool ValidModule(uint32_t index)
 }
 
 bool ValidTemplate(const char *search) {
+/*
   char template_name[strlen(SettingsText(SET_TEMPLATE_NAME)) +1];
   char search_name[strlen(search) +1];
 
@@ -1402,6 +1492,8 @@ bool ValidTemplate(const char *search) {
   LowerCase(search_name, search);
 
   return (strstr(template_name, search_name) != nullptr);
+*/
+  return StrCaseStr_P(SettingsText(SET_TEMPLATE_NAME), search);
 }
 
 String AnyModuleName(uint32_t index)
@@ -1485,8 +1577,11 @@ void TemplateGpios(myio *gp)
 
   uint32_t j = 0;
   for (uint32_t i = 0; i < nitems(Settings.user_template.gp.io); i++) {
+#if defined(ESP32) && CONFIG_IDF_TARGET_ESP32C3
+#else
     if (6 == i) { j = 9; }
     if (8 == i) { j = 12; }
+#endif
     dest[j] = src[i];
     j++;
   }
@@ -1539,7 +1634,20 @@ void SetModuleType(void)
 
 bool FlashPin(uint32_t pin)
 {
+#if defined(ESP32) && CONFIG_IDF_TARGET_ESP32C3
+  return (pin > 10) && (pin < 18);        // ESP32C3 has GPIOs 11-17 reserved for Flash
+#else // ESP32 and ESP8266
   return (((pin > 5) && (pin < 9)) || (11 == pin));
+#endif
+}
+
+bool RedPin(uint32_t pin) // pin may be dangerous to change, display in RED in template console
+{
+#if defined(ESP32) && CONFIG_IDF_TARGET_ESP32C3
+  return false;     // no red pin on ESP32C3
+#else // ESP32 and ESP8266
+  return (9==pin)||(10==pin);
+#endif
 }
 
 uint32_t ValidPin(uint32_t pin, uint32_t gpio) {
@@ -1580,7 +1688,7 @@ bool JsonTemplate(char* dataBuf)
   // Old: {"NAME":"Shelly 2.5","GPIO":[56,0,17,0,21,83,0,0,6,82,5,22,156],"FLAG":2,"BASE":18}
   // New: {"NAME":"Shelly 2.5","GPIO":[320,0,32,0,224,193,0,0,640,192,608,225,3456,4736],"FLAG":0,"BASE":18}
 
-//  AddLog_P(LOG_LEVEL_DEBUG, PSTR("TPL: |%s|"), dataBuf);
+//  AddLog(LOG_LEVEL_DEBUG, PSTR("TPL: |%s|"), dataBuf);
 
   if (strlen(dataBuf) < 9) { return false; }  // Workaround exception if empty JSON like {} - Needs checks
 
@@ -1643,6 +1751,23 @@ bool JsonTemplate(char* dataBuf)
     uint32_t base = val.getUInt();
     if ((0 == base) || !ValidTemplateModule(base -1)) { base = 18; }
     Settings.user_template_base = base -1;  // Default WEMOS
+  }
+
+  val = root[PSTR(D_JSON_CMND)];
+  if (val) {
+    if ((USER_MODULE == Settings.module) || StrCaseStr_P(val.getStr(), PSTR(D_CMND_MODULE " 0"))) {  // Only execute if current module = USER_MODULE = this template
+      char* backup_data = XdrvMailbox.data;
+      XdrvMailbox.data = (char*)val.getStr();   // Backlog commands
+      ReplaceChar(XdrvMailbox.data, '|', ';');  // Support '|' as command separator for JSON backwards compatibility
+      uint32_t backup_data_len = XdrvMailbox.data_len;
+      XdrvMailbox.data_len = 1;                 // Any data
+      uint32_t backup_index = XdrvMailbox.index;
+      XdrvMailbox.index = 0;                    // Backlog0 - no delay
+      CmndBacklog();
+      XdrvMailbox.index = backup_index;
+      XdrvMailbox.data_len = backup_data_len;
+      XdrvMailbox.data = backup_data;
+    }
   }
 
 //  AddLog(LOG_LEVEL_DEBUG, PSTR("TPL: Converted"));
@@ -1990,9 +2115,8 @@ int8_t I2cWriteBuffer(uint8_t addr, uint8_t reg, uint8_t *reg_data, uint16_t len
   return 0;
 }
 
-void I2cScan(char *devs, unsigned int devs_len, uint32_t bus = 0);
-void I2cScan(char *devs, unsigned int devs_len, uint32_t bus)
-{
+void I2cScan(uint32_t bus = 0);
+void I2cScan(uint32_t bus) {
   // Return error codes defined in twi.h and core_esp8266_si2c.c
   // I2C_OK                      0
   // I2C_SCL_HELD_LOW            1 = SCL held low by another device, no procedure available to recover
@@ -2004,7 +2128,7 @@ void I2cScan(char *devs, unsigned int devs_len, uint32_t bus)
   uint8_t address = 0;
   uint8_t any = 0;
 
-  snprintf_P(devs, devs_len, PSTR("{\"" D_CMND_I2CSCAN "\":\"" D_JSON_I2CSCAN_DEVICES_FOUND_AT));
+  Response_P(PSTR("{\"" D_CMND_I2CSCAN "\":\"" D_JSON_I2CSCAN_DEVICES_FOUND_AT));
   for (address = 1; address <= 127; address++) {
 #ifdef ESP32
     TwoWire & myWire = (bus == 0) ? Wire : Wire1;
@@ -2015,19 +2139,19 @@ void I2cScan(char *devs, unsigned int devs_len, uint32_t bus)
     error = myWire.endTransmission();
     if (0 == error) {
       any = 1;
-      snprintf_P(devs, devs_len, PSTR("%s 0x%02x"), devs, address);
+      ResponseAppend_P(PSTR(" 0x%02x"), address);
     }
     else if (error != 2) {  // Seems to happen anyway using this scan
       any = 2;
-      snprintf_P(devs, devs_len, PSTR("{\"" D_CMND_I2CSCAN "\":\"Error %d at 0x%02x"), error, address);
+      Response_P(PSTR("{\"" D_CMND_I2CSCAN "\":\"Error %d at 0x%02x"), error, address);
       break;
     }
   }
   if (any) {
-    strncat(devs, "\"}", devs_len - strlen(devs) -1);
+    ResponseAppend_P(PSTR("\"}"));
   }
   else {
-    snprintf_P(devs, devs_len, PSTR("{\"" D_CMND_I2CSCAN "\":\"" D_JSON_I2CSCAN_NO_DEVICES_FOUND "\"}"));
+    Response_P(PSTR("{\"" D_CMND_I2CSCAN "\":\"" D_JSON_I2CSCAN_NO_DEVICES_FOUND "\"}"));
   }
 }
 
@@ -2154,14 +2278,28 @@ void SyslogAsync(bool refresh) {
         AddLog(LOG_LEVEL_INFO, PSTR(D_LOG_APPLICATION D_SYSLOG_HOST_NOT_FOUND ". " D_RETRY_IN " %d " D_UNIT_SECOND), SYSLOG_TIMER);
         return;
       }
-      char log_data[len +72];            // Hostname + Id + log data
-      snprintf_P(log_data, sizeof(log_data), PSTR("%s ESP-"), NetworkHostname());
-      uint32_t preamble_len = strlen(log_data);
-      len -= mxtime;
-      strlcpy(log_data +preamble_len, line +mxtime, len);
-      // wemos5 ESP-HTP: Web server active on wemos5 with IP address 192.168.2.172
-      PortUdp_write(log_data, preamble_len + len);
+
+      char header[64];
+      snprintf_P(header, sizeof(header), PSTR("%s ESP-"), NetworkHostname());
+      char* line_start = line +mxtime;
+#ifdef ESP8266
+      // Packets over 1460 bytes are not send
+      uint32_t line_len;
+      int32_t log_len = len -mxtime -1;
+      while (log_len > 0) {
+        PortUdp.write(header);
+        line_len = (log_len > 1460) ? 1460 : log_len;
+        PortUdp.write((uint8_t*)line_start, line_len);
+        PortUdp.endPacket();
+        log_len -= 1460;
+        line_start += 1460;
+      }
+#else
+      PortUdp.write(header);
+      PortUdp.write((uint8_t*)line_start, len -mxtime -1);
       PortUdp.endPacket();
+#endif
+
       delay(1);                          // Add time for UDP handling (#5512)
     }
   }
@@ -2259,6 +2397,12 @@ void AddLogData(uint32_t loglevel, const char* log_data) {
       (TasmotaGlobal.masterlog_level <= highest_loglevel)) {
     // Delimited, zero-terminated buffer of log lines.
     // Each entry has this format: [index][loglevel][log data]['\1']
+
+    uint32_t log_data_len = strlen(log_data);
+    if (log_data_len + 64 > LOG_BUFFER_SIZE) {
+      sprintf_P((char*)log_data + 128, PSTR(" ... truncated %d"), log_data_len);
+    }
+
     TasmotaGlobal.log_buffer_pointer &= 0xFF;
     if (!TasmotaGlobal.log_buffer_pointer) {
       TasmotaGlobal.log_buffer_pointer++;  // Index 0 is not allowed as it is the end of char string
@@ -2282,55 +2426,20 @@ void AddLogData(uint32_t loglevel, const char* log_data) {
 }
 
 void AddLog(uint32_t loglevel, PGM_P formatP, ...) {
-  // To save stack space support logging for max text length of 128 characters
-  char log_data[LOGSZ +4];
-
   va_list arg;
   va_start(arg, formatP);
-  uint32_t len = ext_vsnprintf_P(log_data, LOGSZ +1, formatP, arg);
+  char* log_data = ext_vsnprintf_malloc_P(formatP, arg);
   va_end(arg);
-  if (len > LOGSZ) { strcat(log_data, "..."); }  // Actual data is more
-
-#ifdef DEBUG_TASMOTA_CORE
-  // Profile max_len
-  static uint32_t max_len = 0;
-  if (len > max_len) {
-    max_len = len;
-    Serial.printf("PRF: AddLog %d\n", max_len);
-  }
-#endif
+  if (log_data == nullptr) { return; }
 
   AddLogData(loglevel, log_data);
-}
-
-void AddLog_P(uint32_t loglevel, PGM_P formatP, ...) {
-  // Use more stack space to support logging for max text length of 700 characters
-  char log_data[MAX_LOGSZ];
-
-  va_list arg;
-  va_start(arg, formatP);
-  uint32_t len = ext_vsnprintf_P(log_data, sizeof(log_data), formatP, arg);
-  va_end(arg);
-
-  AddLogData(loglevel, log_data);
-}
-
-void AddLog_Debug(PGM_P formatP, ...)
-{
-  char log_data[MAX_LOGSZ];
-
-  va_list arg;
-  va_start(arg, formatP);
-  uint32_t len = ext_vsnprintf_P(log_data, sizeof(log_data), formatP, arg);
-  va_end(arg);
-
-  AddLogData(LOG_LEVEL_DEBUG, log_data);
+  free(log_data);
 }
 
 void AddLogBuffer(uint32_t loglevel, uint8_t *buffer, uint32_t count)
 {
   char hex_char[(count * 3) + 2];
-  AddLog_P(loglevel, PSTR("DMP: %s"), ToHex_P(buffer, count, hex_char, sizeof(hex_char), ' '));
+  AddLog(loglevel, PSTR("DMP: %s"), ToHex_P(buffer, count, hex_char, sizeof(hex_char), ' '));
 }
 
 void AddLogSerial(uint32_t loglevel)
@@ -2376,9 +2485,6 @@ void AddLogSpi(bool hardware, uint32_t clk, uint32_t mosi, uint32_t miso) {
       break;
   }
 }
-
-
-
 
 /*********************************************************************************************\
  * Uncompress static PROGMEM strings

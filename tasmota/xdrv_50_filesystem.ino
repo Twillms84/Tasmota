@@ -279,7 +279,7 @@ bool TfsFileExists(const char *fname){
 
   bool yes = ffsp->exists(fname);
   if (!yes) {
-    AddLog(LOG_LEVEL_DEBUG, PSTR("TFS: File '%s' not found"), fname);
+    AddLog(LOG_LEVEL_DEBUG, PSTR("TFS: File '%s' not found"), fname +1);  // Skip leading slash
   }
   return yes;
 }
@@ -320,7 +320,7 @@ bool TfsLoadFile(const char *fname, uint8_t *buf, uint32_t len) {
 
   File file = ffsp->open(fname, "r");
   if (!file) {
-    AddLog(LOG_LEVEL_INFO, PSTR("TFS: File '%s' not found"), fname);
+    AddLog(LOG_LEVEL_INFO, PSTR("TFS: File '%s' not found"), fname +1);  // Skip leading slash
     return false;
   }
 
@@ -946,7 +946,7 @@ void UfsEditor(void) {
         AddLog(LOG_LEVEL_DEBUG_MORE, PSTR("UFS: UfsEditor: read=%d"), l);
         if (l < 0) { break; }
         buf[l] = '\0';
-        WSContentSend_P((const char*)buf);
+        WSContentSend_P(PSTR("%s"), buf);
         filelen -= l;
       }
       fp.close();

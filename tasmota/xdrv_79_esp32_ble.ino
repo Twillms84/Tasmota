@@ -54,7 +54,7 @@
         AABBCCDDEEFF/n (n = 0..3) where n indicates the TYPE of address
         most notably, if you wish to connect to a random address (n = 1), then you must specify,
         else it will not connect.
-        e.g. to alias a random address to fred: 
+        e.g. to alias a random address to fred:
         BLEAlias fred=1234567890/1
         to connect and read fred's name:
         BLEName fred
@@ -68,14 +68,14 @@
       BLEAdv - unused
       BLEOp
         advanced - perform a BLE active operation
-        mainly for debug or unsupported devices. 
+        mainly for debug or unsupported devices.
       BLEMode
-        control scanning mode 
+        control scanning mode
         0 - stop BLE
         1 - run BLE but manual scan
         *2 - run BLE with auto scan
       BLEDetails
-        display details of adverts 
+        display details of adverts
         BLEdetails0 - no display
         BLEdetails2 <mac|alias> - display for one device
         BLEdetails3 - display for ALL devices
@@ -98,7 +98,7 @@
       BLEDevices
         display or clear the devices list
         BLEDevices0 - clear list
-        BLEDevices1 - publish on tele 
+        BLEDevices1 - publish on tele
       BLEMaxAge
         display or set the max age of a BLE address before being forgotten
         BLEMaxAge - display the setting
@@ -974,14 +974,14 @@ int SafeAddLog_P(uint32_t loglevel, PGM_P formatP, ...) {
   vsnprintf_P(BLE_temp_log_data, maxlen, formatP, arg);
   va_end(arg);
 #ifdef USE_NATIVE_LOGGING
-  AddLog_P(loglevel, PSTR("%s"), BLE_temp_log_data);
+  AddLog(loglevel, PSTR("%s"), BLE_temp_log_data);
   return 1;
 #else
   if (thistask == TasmotaMainTask){
     loglevel = LOG_LEVEL_ERROR;
     snprintf(BLE_temp_log_data + strlen(BLE_temp_log_data), 13, "-!MAINTHREAD!");
     xSemaphoreGive(SafeLogMutex); // release mutex
-    AddLog_P(loglevel, PSTR("%s"), BLE_temp_log_data);
+    AddLog(loglevel, PSTR("%s"), BLE_temp_log_data);
     return 0;
   }
 
@@ -1164,8 +1164,8 @@ void setDetails(ble_advertisment_t *ad){
   p += len;
   maxlen -= len;
   if (ad->addrtype){
-    *(p++) = '/';  
-    *(p++) = 0x30+ad->addrtype;  
+    *(p++) = '/';
+    *(p++) = 0x30+ad->addrtype;
   }
   *(p++) = '\"'; maxlen--;
 
@@ -1259,8 +1259,11 @@ void postAdvertismentDetails(){
 
   TasAutoMutex localmutex(&BLEOperationsRecursiveMutex, "BLEPostAdd");
   if (BLEAdvertismentDetailsJsonSet){
-    strncpy(TasmotaGlobal.mqtt_data, BLEAdvertismentDetailsJson, sizeof(TasmotaGlobal.mqtt_data));
-    TasmotaGlobal.mqtt_data[sizeof(TasmotaGlobal.mqtt_data)-1] = 0;
+
+//    strncpy(TasmotaGlobal.mqtt_data, BLEAdvertismentDetailsJson, sizeof(TasmotaGlobal.mqtt_data));
+//    TasmotaGlobal.mqtt_data[sizeof(TasmotaGlobal.mqtt_data)-1] = 0;
+    Response_P(BLEAdvertismentDetailsJson);
+
     BLEAdvertismentDetailsJsonSet = 0;
     // we got the data, give before MQTT call.
     localmutex.give();
@@ -3142,13 +3145,13 @@ void CmndBLEOperation(void){
 \*********************************************************************************************/
 static void BLEPostMQTTSeenDevices(int type) {
   int remains = 0;
+/*
   nextSeenDev = 0;
 
   memset(TasmotaGlobal.mqtt_data, 0, sizeof(TasmotaGlobal.mqtt_data));
-  ResponseTime_P(PSTR(""));
-  int timelen = strlen(TasmotaGlobal.mqtt_data);
+  int timelen = ResponseTime_P(PSTR(""));
   char *dest = TasmotaGlobal.mqtt_data + timelen;
-  int maxlen = (sizeof(TasmotaGlobal.mqtt_data)-20) - timelen;
+  int maxlen = ResponseSize() -20 -timelen;
 
 //  if (!TasmotaGlobal.ota_state_flag){
   do {
@@ -3157,6 +3160,19 @@ static void BLEPostMQTTSeenDevices(int type) {
     MqttPublishPrefixTopicRulesProcess_P((1== type) ? TELE : STAT, PSTR("BLE"));
   } while (remains);
 //  }
+*/
+
+  // Once TasmotaGlobal.mqtt_data is changed from (limited by MESSZ) char array to (unlimited) String the below code can be simplified
+  char dest[ResponseSize()];
+  int maxlen = ResponseSize() -64;
+
+  do {
+    remains = getSeenDevicesToJson(dest, maxlen);
+    ResponseTime_P(dest);
+    // no retain - this is present devices, not historic
+    MqttPublishPrefixTopicRulesProcess_P((1== type) ? TELE : STAT, PSTR("BLE"));
+  } while (remains);
+
 }
 
 static void BLEPostMQTT(bool onlycompleted) {
@@ -3340,7 +3356,7 @@ static void mainThreadOpCallbacks() {
 
       // always remove from here
       completedOperations.erase(completedOperations.begin() + i);
-      // unless some callback told us not to send on MQTT, then remove from completed and 
+      // unless some callback told us not to send on MQTT, then remove from completed and
       // add to mqtt list
       if (!callbackres){
         addOperation(&mqttOperations, &op);
@@ -3396,7 +3412,7 @@ static void BLEDiag()
   uint32_t totalCount = BLEAdvertisment.totalCount;
   uint32_t deviceCount = seenDevices.size();
 #ifdef BLE_ESP32_DEBUG
-  if (BLEDebugMode > 0) AddLog_P(LOG_LEVEL_INFO,PSTR("BLE: scans:%u,advertisements:%u,devices:%u,resets:%u,BLEStop:%d,BLERunning:%d,BLERunningScan:%d,BLELoopCount:%u,BLEOpCount:%u"), BLEScanCount, totalCount, deviceCount, BLEResets, BLEStop, BLERunning, BLERunningScan, BLELoopCount, BLEOpCount);
+  if (BLEDebugMode > 0) AddLog(LOG_LEVEL_INFO,PSTR("BLE: scans:%u,advertisements:%u,devices:%u,resets:%u,BLEStop:%d,BLERunning:%d,BLERunningScan:%d,BLELoopCount:%u,BLEOpCount:%u"), BLEScanCount, totalCount, deviceCount, BLEResets, BLEStop, BLERunning, BLERunningScan, BLELoopCount, BLEOpCount);
 #endif
 }
 
@@ -3595,14 +3611,14 @@ void HandleBleConfiguration(void)
 
 int ExtStopBLE(){
   AddLog(LOG_LEVEL_INFO, PSTR("BLE: Stopping if active"));
-  BLE_ESP32::BLEEnableMask = 0; 
+  BLE_ESP32::BLEEnableMask = 0;
   BLE_ESP32::stopStartBLE();
   return 0;
 }
 
 int ExtRestartBLEIfEnabled(){
   AddLog(LOG_LEVEL_INFO, PSTR("BLE: Starting if active"));
-  BLE_ESP32::BLEEnableMask = 1; 
+  BLE_ESP32::BLEEnableMask = 1;
   BLE_ESP32::stopStartBLE();
   return 0;
 }
@@ -3738,7 +3754,7 @@ void sendExample(){
 #endif
 }
 // end #ifdef BLE_ESP32_EXAMPLES
-#endif 
+#endif
 
 
 #endif

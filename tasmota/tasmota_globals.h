@@ -261,12 +261,16 @@ const uint16_t LOG_BUFFER_SIZE = 4000;         // Max number of characters in lo
 #define TASM_FILE_DRIVER            "/.drvset%03d"
 #define TASM_FILE_SENSOR            "/.snsset%03d"
 #define TASM_FILE_TLSKEY            "/tlskey"          // TLS private key
-#define TASM_FILE_ZIGBEE            "/zb"              // Zigbee settings blob as used by CC2530 on ESP32
+#define TASM_FILE_ZIGBEE            "/zb"              // Zigbee devices information blob
+#define TASM_FILE_ZIGBEE_DATA       "/zbdata"          // Zigbee last known values of devices
 #define TASM_FILE_AUTOEXEC          "/autoexec.bat"    // Commands executed after restart
 #define TASM_FILE_CONFIG            "/config.sys"      // Settings executed after restart
 
+#define MQTT_DATA_STRING                               // Use heap instead of fixed memory for TasmotaGlobal.mqtt_data
+
 #ifndef MQTT_MAX_PACKET_SIZE
 #define MQTT_MAX_PACKET_SIZE        1200       // Bytes
+//#define MQTT_MAX_PACKET_SIZE        2048       // Bytes
 #endif
 #ifndef MQTT_KEEPALIVE
 #define MQTT_KEEPALIVE              30         // Seconds
@@ -287,6 +291,8 @@ const uint16_t LOG_BUFFER_SIZE = 4000;         // Max number of characters in lo
 #ifndef MESSZ
 //#define MESSZ                       1040     // Max number of characters in JSON message string (Hass discovery and nice MQTT_MAX_PACKET_SIZE = 1200)
 #define MESSZ                       (MQTT_MAX_PACKET_SIZE -TOPSZ -7)  // Max number of characters in JSON message string
+//#define MESSZ                       MQTT_MAX_PACKET_SIZE // Max number of characters in JSON message string
+//#define MESSZ                       2048       // Max number of characters in JSON message string
 #endif
 
 #ifndef USE_DEVICE_GROUPS
@@ -479,22 +485,22 @@ bool first_device_group_is_local = true;
 #endif  // USE_DEVICE_GROUPS
 
 #ifdef DEBUG_TASMOTA_CORE
-#define DEBUG_CORE_LOG(...) AddLog_Debug(__VA_ARGS__)
+#define DEBUG_CORE_LOG(...) AddLog(LOG_LEVEL_DEBUG, __VA_ARGS__)
 #else
 #define DEBUG_CORE_LOG(...)
 #endif
 #ifdef DEBUG_TASMOTA_DRIVER
-#define DEBUG_DRIVER_LOG(...) AddLog_Debug(__VA_ARGS__)
+#define DEBUG_DRIVER_LOG(...) AddLog(LOG_LEVEL_DEBUG, __VA_ARGS__)
 #else
 #define DEBUG_DRIVER_LOG(...)
 #endif
 #ifdef DEBUG_TASMOTA_SENSOR
-#define DEBUG_SENSOR_LOG(...) AddLog_Debug(__VA_ARGS__)
+#define DEBUG_SENSOR_LOG(...) AddLog(LOG_LEVEL_DEBUG, __VA_ARGS__)
 #else
 #define DEBUG_SENSOR_LOG(...)
 #endif
 #ifdef DEBUG_TASMOTA_TRACE
-#define DEBUG_TRACE_LOG(...) AddLog_Debug(__VA_ARGS__)
+#define DEBUG_TRACE_LOG(...) AddLog(LOG_LEVEL_DEBUG, __VA_ARGS__)
 #else
 #define DEBUG_TRACE_LOG(...)
 #endif

@@ -175,8 +175,6 @@ void WiFiSetSleepMode(void)
 
 void WifiBegin(uint8_t flag, uint8_t channel)
 {
-  const static char kWifiPhyMode[] PROGMEM = " bgnl";
-
 #ifdef USE_EMULATION
   UdpDisconnect();
 #endif  // USE_EMULATION
@@ -567,6 +565,10 @@ RF_PRE_INIT()
 }
 #endif  // WIFI_RF_PRE_INIT
 
+void WifiEnable(void) {
+  Wifi.counter = 1;
+}
+
 void WifiConnect(void)
 {
   if (!Settings.flag4.network_wifi) { return; }
@@ -621,6 +623,14 @@ void WifiShutdown(bool option = false)
     // WiFi.persistent(false);   // Do not use SDK storage of SSID/WPA parameters
   }
   delay(100);                 // Flush anything in the network buffers.
+}
+
+void WifiDisable(void) {
+  if (!TasmotaGlobal.global_state.wifi_down) {
+    WifiShutdown();
+    WifiSetMode(WIFI_OFF);
+  }
+  TasmotaGlobal.global_state.wifi_down = 1;
 }
 
 void EspRestart(void)

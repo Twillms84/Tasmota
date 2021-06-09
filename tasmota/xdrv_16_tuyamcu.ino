@@ -139,7 +139,7 @@ TuyaSend4 11,1 -> Sends enum (Type 4) data 1 to dpId 11 (Max data length 1 bytes
 */
 
 void CmndTuyaSend(void) {
-  if (XdrvMailbox.index > 4 && XdrvMailbox.index < 8) {
+  if (XdrvMailbox.index > 5 && XdrvMailbox.index < 8) {
     return;
   }
   if (XdrvMailbox.index == 0) {
@@ -171,6 +171,8 @@ void CmndTuyaSend(void) {
         TuyaSendValue(dpId, strtoull(data, nullptr, 0));
       } else if (3 == XdrvMailbox.index) {
         TuyaSendString(dpId, data);
+      } else if (5 == XdrvMailbox.index) {
+        TuyaSendHexString(dpId, data);
       } else if (4 == XdrvMailbox.index) {
         TuyaSendEnum(dpId, strtoul(data, nullptr, 0));
       }
@@ -431,7 +433,7 @@ void TuyaSendCmd(uint8_t cmd, uint8_t payload[] = nullptr, uint16_t payload_len 
   TuyaSerial->write(cmd);                   // Tuya command
   TuyaSerial->write(payload_len >> 8);      // following data length (Hi)
   TuyaSerial->write(payload_len & 0xFF);    // following data length (Lo)
-  char log_data[MAX_LOGSZ];
+  char log_data[700];                       // Was MAX_LOGSZ
   snprintf_P(log_data, sizeof(log_data), PSTR("TYA: Send \"55aa00%02x%02x%02x"), cmd, payload_len >> 8, payload_len & 0xFF);
   for (uint32_t i = 0; i < payload_len; ++i) {
     TuyaSerial->write(payload[i]);
@@ -486,6 +488,28 @@ void TuyaSendValue(uint8_t id, uint32_t value)
 void TuyaSendEnum(uint8_t id, uint32_t value)
 {
   TuyaSendState(id, TUYA_TYPE_ENUM, (uint8_t*)(&value));
+}
+
+void TuyaSendHexString(uint8_t id, char data[]) {
+
+  uint16_t len = strlen(data)/2;
+  uint16_t payload_len = 4 + len;
+  uint8_t payload_buffer[payload_len];
+  payload_buffer[0] = id;
+  payload_buffer[1] = TUYA_TYPE_STRING;
+  payload_buffer[2] = len >> 8;
+  payload_buffer[3] = len & 0xFF;
+
+  char hexbyte[3];
+  hexbyte[2] = 0;
+
+  for (uint16_t i = 0; i < len; i++) {
+    hexbyte[0] = data[2*i];
+    hexbyte[1] = data[2*i+1];
+    payload_buffer[4+i] = strtol(hexbyte,NULL,16);
+  }
+
+  TuyaSendCmd(TUYA_CMD_SET_DP, payload_buffer, payload_len);
 }
 
 void TuyaSendString(uint8_t id, char data[]) {
@@ -729,7 +753,7 @@ void TuyaProcessStatePacket(void) {
 
           if (RtcTime.valid) {
             if (Tuya.lastPowerCheckTime != 0 && Energy.active_power[0] > 0) {
-              Energy.kWhtoday += (float)Energy.active_power[0] * (Rtc.utc_time - Tuya.lastPowerCheckTime) / 36;
+              Energy.kWhtoday += Energy.active_power[0] * (float)(Rtc.utc_time - Tuya.lastPowerCheckTime) / 36.0;
               EnergyUpdateToday();
             }
             Tuya.lastPowerCheckTime = Rtc.utc_time;
@@ -765,7 +789,7 @@ void TuyaProcessStatePacket(void) {
         if (PowerOff) { Tuya.ignore_dimmer_cmd_timeout = millis() + 250; }
       }
       else if (Tuya.buffer[dpidStart + 1] == 2) {  // Data Type 2
-        uint16_t packetValue = Tuya.buffer[dpidStart + 6] << 8 | Tuya.buffer[dpidStart + 7];
+        uint32_t packetValue = Tuya.buffer[dpidStart + 4] << 24 | Tuya.buffer[dpidStart + 5] << 16 | Tuya.buffer[dpidStart + 6] << 8 | Tuya.buffer[dpidStart + 7]; // TYpe 2 is a 32 bit integer
         uint8_t dimIndex;
         bool SnsUpdate = false;
 
@@ -787,6 +811,8 @@ void TuyaProcessStatePacket(void) {
           } else {
             if (fnId > 74) {
               res = 0;
+            } else if (fnId > 72) {
+              res = Settings.flag2.humidity_resolution;
             } else if (fnId == 72) {
               res = Settings.mbflag2.temperature_set_res;
             } else {
@@ -859,7 +885,7 @@ void TuyaProcessStatePacket(void) {
 
           if (RtcTime.valid) {
             if (Tuya.lastPowerCheckTime != 0 && Energy.active_power[0] > 0) {
-              Energy.kWhtoday += (float)Energy.active_power[0] * (Rtc.utc_time - Tuya.lastPowerCheckTime) / 36;
+              Energy.kWhtoday += Energy.active_power[0] * (float)(Rtc.utc_time - Tuya.lastPowerCheckTime) / 36.0;
               EnergyUpdateToday();
             }
             Tuya.lastPowerCheckTime = Rtc.utc_time;
@@ -1201,7 +1227,11 @@ void TuyaSerialInput(void)
       if (Settings.flag3.tuya_serial_mqtt_publish) {  // SetOption66 - Enable TuyaMcuReceived messages over Mqtt
         MqttPublishPrefixTopic_P(RESULT_OR_TELE, PSTR(D_JSON_TUYA_MCU_RECEIVED));
       } else {
-        AddLog_P(LOG_LEVEL_DEBUG, TasmotaGlobal.mqtt_data);
+#ifdef MQTT_DATA_STRING
+        AddLog(LOG_LEVEL_DEBUG, TasmotaGlobal.mqtt_data.c_str());
+#else
+        AddLog(LOG_LEVEL_DEBUG, TasmotaGlobal.mqtt_data);
+#endif
       }
       XdrvRulesProcess(0);
 
@@ -1357,6 +1387,8 @@ void TuyaSensorsShow(bool json)
         }
         if (sensor > 74) {
           res = 0;
+        } else if (sensor > 72) {
+          res = Settings.flag2.humidity_resolution;
         } else if (sensor == 72) {
           res = Settings.mbflag2.temperature_set_res;
         } else {
@@ -1380,11 +1412,11 @@ void TuyaSensorsShow(bool json)
                             dtostrfd(TuyaAdjustedTemperature(Tuya.Sensors[1], Settings.mbflag2.temperature_set_res), Settings.mbflag2.temperature_set_res, tempval), TempUnit());
             break;
           case 73:
-            WSContentSend_PD(HTTP_SNS_HUM, "", dtostrfd(TuyaAdjustedTemperature(Tuya.Sensors[2], Settings.flag2.temperature_resolution), Settings.flag2.temperature_resolution, tempval));
+            WSContentSend_PD(HTTP_SNS_HUM, "", dtostrfd(TuyaAdjustedTemperature(Tuya.Sensors[2], Settings.flag2.humidity_resolution), Settings.flag2.humidity_resolution, tempval));
             break;
           case 74:
             WSContentSend_PD(PSTR("{s}" D_HUMIDITY " Set{m}%s " D_UNIT_PERCENT "{e}"),
-                            dtostrfd(TuyaAdjustedTemperature(Tuya.Sensors[3], Settings.flag2.temperature_resolution), Settings.flag2.temperature_resolution, tempval));
+                            dtostrfd(TuyaAdjustedTemperature(Tuya.Sensors[3], Settings.flag2.humidity_resolution), Settings.flag2.humidity_resolution, tempval));
             break;
           case 75:
             WSContentSend_PD(HTTP_SNS_ILLUMINANCE, "", Tuya.Sensors[4]);

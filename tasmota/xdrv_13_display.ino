@@ -27,12 +27,17 @@ Renderer *renderer;
 
 enum ColorType { COLOR_BW, COLOR_COLOR };
 
-#ifndef MAX_TOUCH_BUTTONS
-#define MAX_TOUCH_BUTTONS 16
+#ifndef DISP_BATCH_FILE
+#define DISP_BATCH_FILE "/display.bat"
+#endif
+
+#ifdef USE_UFILESYS
+extern FS *ufsp;
+extern FS *ffsp;
 #endif
 
 #ifdef USE_TOUCH_BUTTONS
-VButton *buttons[MAX_TOUCH_BUTTONS];
+extern VButton *buttons[MAX_TOUCH_BUTTONS];
 #endif
 
 // drawing color is WHITE
@@ -41,6 +46,45 @@ uint16_t fg_color = 1;
 uint16_t bg_color = 0;
 uint8_t color_type = COLOR_BW;
 uint8_t auto_draw = 1;
+int16_t disp_xpos = 0;
+int16_t disp_ypos = 0;
+
+#ifdef USE_MULTI_DISPLAY
+struct MULTI_DISP {
+  Renderer *display;
+  uint16_t fg_color;
+  uint16_t bg_color;
+  int16_t disp_xpos;
+  int16_t disp_ypos;
+  uint8_t color_type;
+  uint8_t auto_draw;
+} displays[3];
+uint8_t cur_display;
+Renderer *Init_uDisplay(const char *desc, int8_t cs);
+
+void Set_display(uint8_t index) {
+  displays[index].display = renderer;
+  displays[index].fg_color = fg_color;
+  displays[index].bg_color = bg_color;
+  displays[index].color_type = color_type;
+  displays[index].auto_draw = auto_draw;
+  displays[index].disp_xpos = disp_xpos;
+  displays[index].disp_ypos = disp_ypos;
+  cur_display = index;
+}
+
+void Get_display(uint8_t index) {
+  renderer = displays[index].display;
+  fg_color = displays[index].fg_color;
+  bg_color = displays[index].bg_color;
+  color_type = displays[index].color_type;
+  auto_draw = displays[index].auto_draw;
+  disp_xpos = displays[index].disp_xpos;
+  disp_ypos = displays[index].disp_ypos;
+  if (renderer) renderer->setDrawMode(auto_draw >> 1);
+  cur_display = index;
+}
+#endif // USE_MULTI_DISPLAY
 
 const uint8_t DISPLAY_MAX_DRIVERS = 32;        // Max number of display drivers/models supported by xdsp_interface.ino
 const uint8_t DISPLAY_MAX_COLS = 64;           // Max number of columns allowed with command DisplayCols
@@ -175,8 +219,6 @@ uint16_t dsp_y2;
 uint16_t dsp_rad;
 uint16_t dsp_color;
 int16_t dsp_len;
-int16_t disp_xpos = 0;
-int16_t disp_ypos = 0;
 
 uint8_t disp_power = 0;
 uint8_t disp_device = 0;
@@ -512,6 +554,49 @@ void DisplayText(void)
              }
             }
             break;
+#ifdef USE_MULTI_DISPLAY
+          case 'S':
+            {
+              var = atoiv(cp, &temp);
+              cp += var;
+              if (temp < 1 || temp > 3) {
+                temp = 1;
+              }
+              temp--;
+              if (*cp == ':') {
+                cp++;
+                if (displays[temp].display) {
+                  Set_display(cur_display);
+                  Get_display(temp);
+                }
+              } else {
+                char *ep=strchr(cp,':');
+                if (ep) {
+                  *ep=0;
+                  ep++;
+                  File fp;
+                  if (ffsp) {
+                    AddLog(LOG_LEVEL_INFO, PSTR("DSP: File: %s"),cp);
+                    fp = ffsp->open(cp, "r");
+                    if (fp > 0) {
+                      uint32_t size = fp.size();
+                      char *fdesc = (char *)calloc(size + 4, 1);
+                      if (fdesc) {
+                        fp.read((uint8_t*)fdesc, size);
+                        fp.close();
+                        Get_display(temp);
+                        renderer = Init_uDisplay(fdesc, -1);
+                        Set_display(temp);
+                        AddLog(LOG_LEVEL_INFO, PSTR("DSP: File descriptor loaded %x"),renderer);
+                      }
+                    }
+                  }
+                }
+                cp = ep;
+              }
+            }
+            break;
+#endif // USE_MULTI_DISPLAY
 #endif // USE_UFILESYS
           case 'h':
             // hor line to
@@ -696,6 +781,7 @@ void DisplayText(void)
               cp = get_string(bbuff, sizeof(bbuff), cp);
               char unit[4];
               cp = get_string(unit, sizeof(unit), cp);
+	      decode_te(unit);
               define_dt_var(num, gxp, gyp, textbcol, textfcol, font, textsize, txlen, time, dp, bbuff, unit);
             }
           }
@@ -736,30 +822,39 @@ extern FS *ffsp;
             { char *ep = strchr(cp,':');
               if (ep) {
                 static uint8_t *ram_font;
-                char fname[24];
+                char fname[32];
                 *ep = 0;
                 ep++;
-                if (*cp != '/') {
-                  fname[0] = '/';
-                  fname[1] = 0;
+                if (*cp == '-' && *(cp + 1) == 0) {
+                  if (ram_font) {
+                    free (ram_font);
+                    ram_font = 0;
+                    if (renderer) renderer->SetRamfont(0);
+                  }
+                  cp = ep;
                 } else {
-                  fname[0] = 0;
-                }
-                strlcat(fname, cp, sizeof(fname));
-                if (!strstr(cp, ".fnt")) {
-                  strlcat(fname, ".fnt", sizeof(fname));
-                }
-                if (ffsp) {
-                  File fp;
-                  fp = ffsp->open(fname, "r");
-                  if (fp > 0) {
-                    uint32_t size = fp.size();
-                    if (ram_font) free (ram_font);
-                    ram_font = (uint8_t*)special_malloc(size + 4);
-                    fp.read((uint8_t*)ram_font, size);
-                    fp.close();
-                    if (renderer) renderer->SetRamfont(ram_font);
-                    //Serial.printf("Font loaded: %s\n",fname );
+                  if (*cp != '/') {
+                    fname[0] = '/';
+                    fname[1] = 0;
+                  } else {
+                    fname[0] = 0;
+                  }
+                  strlcat(fname, cp, sizeof(fname));
+                  if (!strstr(cp, ".fnt")) {
+                    strlcat(fname, ".fnt", sizeof(fname));
+                  }
+                  if (ffsp) {
+                    File fp;
+                    fp = ffsp->open(fname, "r");
+                    if (fp > 0) {
+                      uint32_t size = fp.size();
+                      if (ram_font) free (ram_font);
+                      ram_font = (uint8_t*)special_malloc(size + 4);
+                      fp.read((uint8_t*)ram_font, size);
+                      fp.close();
+                      if (renderer) renderer->SetRamfont(ram_font);
+                      //Serial.printf("Font loaded: %s\n",fname );
+                    }
                   }
                 }
                 cp = ep;
@@ -1023,8 +1118,9 @@ extern FS *ffsp;
     }
 }
 
+
+
 #ifdef USE_UFILESYS
-extern FS *ufsp;
 void Display_Text_From_File(const char *file) {
   File fp;
   if (!ufsp) return;
@@ -1188,7 +1284,7 @@ void draw_dt_vars(void) {
 
           // restore display vars
           renderer->setTextColor(fg_color, bg_color);
-          renderer->setDrawMode(auto_draw);
+          renderer->setDrawMode(auto_draw>>1);
         }
       }
     }
@@ -1200,12 +1296,16 @@ void draw_dt_vars(void) {
 void DisplayDTVarsTeleperiod(void) {
   ResponseClear();
   MqttShowState();
-  uint32_t jlen = strlen(TasmotaGlobal.mqtt_data);
+  uint32_t jlen = ResponseLength();
 
   if (jlen < DTV_JSON_SIZE) {
     char *json = (char*)malloc(jlen + 2);
     if (json) {
+#ifdef MQTT_DATA_STRING
+      strlcpy(json, TasmotaGlobal.mqtt_data.c_str(), jlen + 1);
+#else
       strlcpy(json, TasmotaGlobal.mqtt_data, jlen + 1);
+#endif
       get_dt_vars(json);
       free(json);
     }
@@ -1220,11 +1320,15 @@ void get_dt_mqtt(void) {
   TasmotaGlobal.tele_period = 2;
   XsnsNextCall(FUNC_JSON_APPEND, xsns_index);
   TasmotaGlobal.tele_period = script_tele_period_save;
-  if (strlen(TasmotaGlobal.mqtt_data)) {
-    TasmotaGlobal.mqtt_data[0] = '{';
-    snprintf_P(TasmotaGlobal.mqtt_data, sizeof(TasmotaGlobal.mqtt_data), PSTR("%s}"), TasmotaGlobal.mqtt_data);
+  if (ResponseLength()) {
+    ResponseJsonStart();
+    ResponseJsonEnd();
   }
+#ifdef MQTT_DATA_STRING
+  get_dt_vars(TasmotaGlobal.mqtt_data.c_str());
+#else
   get_dt_vars(TasmotaGlobal.mqtt_data);
+#endif
 }
 
 void get_dt_vars(char *json) {
@@ -1525,12 +1629,12 @@ void DisplayJsonValue(const char* topic, const char* device, const char* mkey, c
   }
   snprintf_P(buffer, sizeof(buffer), PSTR("%s %s"), source, svalue);
 
-//  AddLog_P(LOG_LEVEL_DEBUG, PSTR(D_LOG_DEBUG "mkey [%s], source [%s], value [%s], quantity_code %d, log_buffer [%s]"), mkey, source, value, quantity_code, buffer);
+//  AddLog(LOG_LEVEL_DEBUG, PSTR(D_LOG_DEBUG "mkey [%s], source [%s], value [%s], quantity_code %d, log_buffer [%s]"), mkey, source, value, quantity_code, buffer);
 
   DisplayLogBufferAdd(buffer);
 }
 
-void DisplayAnalyzeJson(char *topic, char *json)
+void DisplayAnalyzeJson(char *topic, const char *json)
 {
 // //tele/pow2/STATE    {"Time":"2017-09-20T11:53:03", "Uptime":10, "Vcc":3.123, "POWER":"ON", "Wifi":{"AP":2, "SSId":"indebuurt2", "RSSI":68, "APMac":"00:22:6B:FE:8E:20"}}
 // //tele/pow2/ENERGY   {"Time":"2017-09-20T11:53:03", "Total":6.522, "Yesterday":0.150, "Today":0.073, "Period":0.5, "Power":12.1, "Factor":0.56, "Voltage":210.1, "Current":0.102}
@@ -1641,8 +1745,13 @@ void DisplayLocalSensor(void)
 {
   if ((Settings.display_mode &0x02) && (0 == TasmotaGlobal.tele_period)) {
     char no_topic[1] = { 0 };
+#ifdef MQTT_DATA_STRING
+//    DisplayAnalyzeJson(TasmotaGlobal.mqtt_topic, TasmotaGlobal.mqtt_data.c_str());  // Add local topic
+    DisplayAnalyzeJson(no_topic, TasmotaGlobal.mqtt_data.c_str());    // Discard any topic
+#else
 //    DisplayAnalyzeJson(TasmotaGlobal.mqtt_topic, TasmotaGlobal.mqtt_data);  // Add local topic
     DisplayAnalyzeJson(no_topic, TasmotaGlobal.mqtt_data);    // Discard any topic
+#endif
   }
 }
 
@@ -1656,6 +1765,10 @@ void DisplayLocalSensor(void)
 void DisplayInitDriver(void)
 {
   XdspCall(FUNC_DISPLAY_INIT_DRIVER);
+
+#ifdef USE_MULTI_DISPLAY
+  Set_display(0);
+#endif // USE_MULTI_DISPLAY
 
   if (renderer) {
     renderer->setTextFont(Settings.display_font);
@@ -1673,7 +1786,7 @@ void DisplayInitDriver(void)
 #endif
 
 #ifdef USE_UFILESYS
-  Display_Text_From_File("/display.ini");
+  Display_Text_From_File(DISP_BATCH_FILE);
 #endif
 
 #ifdef USE_GRAPH
@@ -2043,6 +2156,9 @@ void CmndDisplayScrollText(void) {
 
 void DisplayReInitDriver(void) {
   XdspCall(FUNC_DISPLAY_INIT_DRIVER);
+#ifdef USE_MULTI_DISPLAY
+  Set_display(0);
+#endif // USE_MULTI_DISPLAY
   ResponseCmndDone();
 }
 
@@ -2572,236 +2688,6 @@ void AddValue(uint8_t num,float fval) {
   }
 }
 #endif // USE_GRAPH
-
-/*********************************************************************************************\
- * Touch panel control
-\*********************************************************************************************/
-
-#if defined(USE_FT5206) || defined(USE_XPT2046)
-
-#ifdef USE_FT5206
-
-#include <FT5206.h>
-// touch panel controller
-#undef FT5206_address
-#define FT5206_address 0x38
-
-FT5206_Class *touchp;
-TP_Point pLoc;
-bool FT5206_found;
-
-bool Touch_Init(TwoWire &i2c) {
-  FT5206_found = false;
-  touchp = new FT5206_Class();
-  if (touchp->begin(i2c, FT5206_address)) {
-    I2cSetActiveFound(FT5206_address, "FT5206");
-    FT5206_found = true;
-  }
-  return FT5206_found;
-}
-
-uint32_t Touch_Status(uint32_t sel) {
-  if (FT5206_found) {
-    switch (sel) {
-      case 0:
-        return  touchp->touched();
-      case 1:
-        return pLoc.x;
-      case 2:
-        return pLoc.y;
-    }
-    return 0;
-  } else {
-    return 0;
-  }
-}
-#endif  // USE_FT5206
-
-#if defined(USE_XPT2046) && defined(USE_DISPLAY_ILI9341)
-#include <XPT2046_Touchscreen.h>
-
-XPT2046_Touchscreen *touchp;
-TS_Point pLoc;
-bool XPT2046_found;
-
-bool Touch_Init(uint16_t CS) {
-  touchp = new XPT2046_Touchscreen(CS);
-  XPT2046_found = touchp->begin();
-  if (XPT2046_found) {
-	AddLog(LOG_LEVEL_INFO, PSTR("TS: XPT2046"));
-  }
-  return XPT2046_found;
-}
-
-uint32_t Touch_Status(uint32_t sel) {
-  if (XPT2046_found) {
-    switch (sel) {
-      case 0:
-        return  touchp->touched();
-      case 1:
-        return pLoc.x;
-      case 2:
-        return pLoc.y;
-    }
-    return 0;
-  } else {
-    return 0;
-  }
-}
-
-#endif  // USE_XPT2046 && USE_DISPLAY_ILI9341
-
-#ifdef USE_TOUCH_BUTTONS
-void Touch_MQTT(uint8_t index, const char *cp, uint32_t val) {
-#if defined(USE_FT5206)
-  ResponseTime_P(PSTR(",\"FT5206\":{\"%s%d\":\"%d\"}}"), cp, index+1, val);
-#elif defined(USE_XPT2046)
-  ResponseTime_P(PSTR(",\"XPT2046\":{\"%s%d\":\"%d\"}}"), cp, index+1, val);
-#endif  // USE_XPT2046
-  MqttPublishTeleSensor();
-}
-
-void Touch_RDW_BUTT(uint32_t count, uint32_t pwr) {
-  buttons[count]->xdrawButton(pwr);
-  if (pwr) buttons[count]->vpower.on_off = 1;
-  else buttons[count]->vpower.on_off = 0;
-}
-
-#ifdef USE_M5STACK_CORE2
-uint8_t tbstate[3];
-#endif
-
-// check digitizer hit
-void Touch_Check(void(*rotconvert)(int16_t *x, int16_t *y)) {
-  uint16_t temp;
-  uint8_t rbutt=0;
-  uint8_t vbutt=0;
-
-  if (touchp->touched()) {
-    // did find a hit
-#if defined(USE_FT5206)
-    pLoc = touchp->getPoint(0);
-#elif defined(USE_XPT2046)
-    pLoc = touchp->getPoint();
-#endif  // USE_XPT2046
-    if (renderer) {
-
-#ifdef USE_M5STACK_CORE2
-      // handle  3 built in touch buttons
-      uint16_t xcenter = 80;
-#define TDELTA 30
-#define TYPOS 275
-
-      for (uint32_t tbut = 0; tbut < 3; tbut++) {
-        if (pLoc.x>(xcenter-TDELTA) && pLoc.x<(xcenter+TDELTA) && pLoc.y>(TYPOS-TDELTA) && pLoc.y<(TYPOS+TDELTA)) {
-          // hit a button
-          if (!(tbstate[tbut] & 1)) {
-              // pressed
-              tbstate[tbut] |= 1;
-              //AddLog(LOG_LEVEL_INFO, PSTR("tbut: %d pressed"), tbut);
-              Touch_MQTT(tbut, "BIB", tbstate[tbut] & 1);
-          }
-        }
-        xcenter += 100;
-      }
-#endif  // USE_M5STACK_CORE2
-
-      rotconvert(&pLoc.x, &pLoc.y);
-
-      // AddLog(LOG_LEVEL_DEBUG_MORE, PSTR("touch after convert %d - %d"), pLoc.x, pLoc.y);
-      // now must compare with defined buttons
-      for (uint8_t count = 0; count < MAX_TOUCH_BUTTONS; count++) {
-        if (buttons[count]) {
-          if (!buttons[count]->vpower.slider) {
-            if (!buttons[count]->vpower.disable) {
-              if (buttons[count]->contains(pLoc.x, pLoc.y)) {
-                // did hit
-                buttons[count]->press(true);
-                if (buttons[count]->justPressed()) {
-                  if (!buttons[count]->vpower.is_virtual) {
-                    uint8_t pwr=bitRead(TasmotaGlobal.power, rbutt);
-                    if (!SendKey(KEY_BUTTON, rbutt+1, POWER_TOGGLE)) {
-                      ExecuteCommandPower(rbutt+1, POWER_TOGGLE, SRC_BUTTON);
-                      Touch_RDW_BUTT(count, !pwr);
-                    }
-                  } else {
-                    // virtual button
-                    const char *cp;
-                    if (!buttons[count]->vpower.is_pushbutton) {
-                      // toggle button
-                      buttons[count]->vpower.on_off ^= 1;
-                      cp="TBT";
-                    } else {
-                      // push button
-                      buttons[count]->vpower.on_off = 1;
-                      cp="PBT";
-                    }
-                    buttons[count]->xdrawButton(buttons[count]->vpower.on_off);
-                    Touch_MQTT(count, cp, buttons[count]->vpower.on_off);
-                  }
-                }
-              }
-              if (!buttons[count]->vpower.is_virtual) {
-                rbutt++;
-              } else {
-                vbutt++;
-              }
-            }
-          } else {
-            // slider
-            if (buttons[count]->didhit(pLoc.x, pLoc.y)) {
-              uint16_t value = buttons[count]->UpdateSlider(pLoc.x, pLoc.y);
-              Touch_MQTT(count, "SLD", value);
-            }
-          }
-        }
-      }
-    }
-  } else {
-    // no hit
-#ifdef USE_M5STACK_CORE2
-    for (uint32_t tbut = 0; tbut < 3; tbut++) {
-      if (tbstate[tbut] & 1) {
-        // released
-        tbstate[tbut] &= 0xfe;
-        Touch_MQTT(tbut, "BIB", tbstate[tbut] & 1);
-        //AddLog(LOG_LEVEL_INFO, PSTR("tbut: %d released"), tbut);
-      }
-    }
-#endif  // USE_M5STACK_CORE2
-    for (uint8_t count = 0; count < MAX_TOUCH_BUTTONS; count++) {
-      if (buttons[count]) {
-        if (!buttons[count]->vpower.slider) {
-          buttons[count]->press(false);
-          if (buttons[count]->justReleased()) {
-            if (buttons[count]->vpower.is_virtual) {
-              if (buttons[count]->vpower.is_pushbutton) {
-                // push button
-                buttons[count]->vpower.on_off = 0;
-                Touch_MQTT(count,"PBT", buttons[count]->vpower.on_off);
-                buttons[count]->xdrawButton(buttons[count]->vpower.on_off);
-              }
-            }
-          }
-          if (!buttons[count]->vpower.is_virtual) {
-            // check if power button stage changed
-            uint8_t pwr = bitRead(TasmotaGlobal.power, rbutt);
-            uint8_t vpwr = buttons[count]->vpower.on_off;
-            if (pwr != vpwr) {
-              Touch_RDW_BUTT(count, pwr);
-            }
-            rbutt++;
-          }
-        }
-      }
-    }
-    pLoc.x = 0;
-    pLoc.y = 0;
-  }
-}
-
-#endif // USE_TOUCH_BUTTONS
-#endif // USE_FT5206 || USE_XPT2046
 
 /*********************************************************************************************\
  * Interface

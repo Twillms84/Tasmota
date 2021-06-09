@@ -108,6 +108,9 @@ typedef struct OT_BOILER_STATUS_T
     // Boiler desired values
     float m_boilerSetpoint;
     float m_hotWaterSetpoint;
+    // This flag is set when Master require a CH to be on
+    // and forces the OpenThermMessageID::TSet to be sent to the boiler
+    bool m_forceSetpointSet;
 
 } OT_BOILER_STATUS;
 
@@ -216,8 +219,6 @@ bool sns_opentherm_Init()
         sns_ot_master = new OpenTherm(Pin(GPIO_BOILER_OT_RX), Pin(GPIO_BOILER_OT_TX));
         sns_ot_master->begin(sns_opentherm_handleInterrupt, sns_opentherm_processResponseCallback);
         sns_ot_connection_status = OpenThermConnectionStatus::OTC_CONNECTING;
-
-        sns_opentherm_init_boiler_status();
         return true;
     }
     return false;
@@ -313,6 +314,8 @@ void sns_ot_start_handshake()
 
     AddLog(LOG_LEVEL_DEBUG, PSTR("[OTH]: perform handshake"));
 
+    sns_opentherm_protocol_reset();
+
     sns_ot_master->sendRequestAync(
         OpenTherm::buildRequest(OpenThermMessageType::READ_DATA, OpenThermMessageID::SConfigSMemberIDcode, 0));
 
@@ -339,7 +342,7 @@ void sns_ot_process_handshake(unsigned long response, int st)
     sns_ot_connection_status = OpenThermConnectionStatus::OTC_READY;
 }
 
-void sns_opentherm_CheckSettings(void)
+void sns_opentherm_check_settings(void)
 {
     bool settingsValid = true;
 
@@ -511,18 +514,14 @@ void sns_opentherm_flags_cmd(void)
         sns_opentherm_init_boiler_status();
     }
     bool addComma = false;
-    TasmotaGlobal.mqtt_data[0] = 0;
+    ResponseClear();
     for (int pos = 0; pos < OT_FLAGS_COUNT; ++pos)
     {
         int mask = 1 << pos;
         int mode = Settings.ot_flags & (uint8_t)mask;
         if (mode > 0)
         {
-            if (addComma)
-            {
-                snprintf_P(TasmotaGlobal.mqtt_data, sizeof(TasmotaGlobal.mqtt_data), PSTR("%s,"), TasmotaGlobal.mqtt_data);
-            }
-            snprintf_P(TasmotaGlobal.mqtt_data, sizeof(TasmotaGlobal.mqtt_data), PSTR("%s%s"), TasmotaGlobal.mqtt_data, sns_opentherm_flag_text(mode));
+            ResponseAppend_P(PSTR("%s%s"), (addComma)?",":"", sns_opentherm_flag_text(mode));
             addComma = true;
         }
     }
@@ -549,7 +548,8 @@ bool Xsns69(uint8_t function)
     {
         if (sns_opentherm_Init())
         {
-            sns_opentherm_CheckSettings();
+            sns_opentherm_check_settings();
+            sns_opentherm_init_boiler_status();
         }
     }
 
@@ -597,6 +597,9 @@ bool Xsns69(uint8_t function)
         break;
     case FUNC_JSON_APPEND:
         sns_opentherm_stat(1);
+        break;
+    case FUNC_SAVE_AT_MIDNIGHT:
+        sns_opentherm_protocol_reset();
         break;
 #ifdef USE_WEBSERVER
     case FUNC_WEB_SENSOR:
