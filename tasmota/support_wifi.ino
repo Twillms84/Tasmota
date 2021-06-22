@@ -106,7 +106,7 @@ void WifiConfig(uint8_t type)
     }
 #ifdef USE_WEBSERVER
     else if (WIFI_MANAGER == Wifi.config_type || WIFI_MANAGER_RESET_ONLY == Wifi.config_type) {
-      WifiManagerBegin(WIFI_MANAGER_RESET_ONLY == Wifi.config_type);
+      WifiManagerBegin(WIFI_MANAGER_RESET_ONLY == Wifi.config_type,false);
     }
 #endif  // USE_WEBSERVER
   }
